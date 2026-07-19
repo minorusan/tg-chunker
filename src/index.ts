@@ -50,21 +50,21 @@ await warmup(ollamaIp);
 // ── PASS 1: anonymise (shared map across all chats → consistent tokens everywhere) ─────────────────
 log('Pass 1 — anonymise');
 const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ?? []), groups, windowN, log);
-// PASS 1.5 — vector-clustered, LLM-verified identity merge (vector proposes candidates, LLM decides).
-log('Pass 1.5 — entity-merge verification (vector + LLM)');
-await mergePass(ollamaIp, people, chats.map((c) => c.doc.messages ?? []), log);
+// PASS 1.5 — fuzzy-string candidates, LLM-verified identity merge (catches spelling variants/declensions).
+log('Pass 1.5 — entity-merge verification (fuzzy + LLM)');
+await mergePass(ollamaIp, people, log);
 const applyToAll = () => { for (const { doc } of chats) applyTokens(doc.messages ?? [], people); };
 applyToAll();
 
 // PASS 1.9 — QA leak scan: re-read the tokenised text, catch anyone discovery MISSED, re-apply, repeat
 // until clean. This is what makes the output *verified* anonymised, not just *probably*.
 log('Pass 1.9 — QA leak scan');
-for (let round = 1; round <= 3; round++) {
+for (let round = 1; round <= 5; round++) {
   const found = await qaPass(ollamaIp, chats.map((c) => c.doc.messages ?? []), people, groups, windowN, log);
   if (found === 0) { log(`   QA round ${round}: ✓ clean — every name is a token`); break; }
   log(`   QA round ${round}: caught ${found} missed name(s) → re-applying`);
   applyToAll();
-  if (round === 3) log(`   QA hit the 3-round limit — re-run if the last round still found leaks`);
+  if (round === 5) log(`   QA hit the 5-round limit — re-run if the last round still found leaks`);
 }
 for (const { file, doc } of chats) writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
 writeFileSync(join(ANON_DIR, 'names-map.json'), JSON.stringify({ people }, null, 2), 'utf8'); // AUDIT file

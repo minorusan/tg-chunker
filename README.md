@@ -291,8 +291,8 @@ Each design idea and where it lives in the code. Every intention is pinned in th
 | robust JSON out of an LLM | **`/api/chat` + tolerant parse** (no grammar constraint, `think:false`, salvage truncation) | `askJson` / `parseLoose` in [`src/ollama.ts`](./src/ollama.ts) |
 | roles are the caller's, not the tool's | **parameterised grouping** | `--groupingTags` in [`src/index.ts`](./src/index.ts) + [`prompts/01_anonymize_discover.md`](./prompts/01_anonymize_discover.md) |
 | keep different people apart | **gender/surname-aware coref** | strict rules in [`prompts/01…`](./prompts/01_anonymize_discover.md) |
-| find same-person candidates cheaply | **vector clustering** (embed name+context, cluster) | [`src/embed.ts`](./src/embed.ts) + `mergePass` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: VECTOR PROPOSES` |
-| "is this the same person?" is semantic | **LLM verify** the vector clusters (gender/surname strict) | `mergePass` + [`prompts/03_merge_verify.md`](./prompts/03_merge_verify.md) · `INTENTION: VECTOR PROPOSES, LLM DISPOSES` |
+| find same-person candidates cheaply | **fuzzy string match** (edit-distance on name tokens) | `fuzzyCandidate` / `mergePass` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: FUZZY STRING PROPOSES` |
+| "is this the same person?" is semantic | **LLM verify** each candidate (gender/surname strict) | `mergePass` + [`prompts/03_merge_verify.md`](./prompts/03_merge_verify.md) · `INTENTION: FUZZY STRING PROPOSES, LLM DISPOSES` |
 | don't guess an ambiguous name | **ambiguity-safe apply** | `buildPairs()` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: AMBIGUITY-SAFE` |
 | self-contained knowledge units | **proposition-based chunking** | `chunkChat()` in [`src/chunk.ts`](./src/chunk.ts) + [`prompts/02…`](./prompts/02_chunk_propositions.md) |
 | model-decided overlap | **`abruptionOffset`** | window loop in [`src/chunk.ts`](./src/chunk.ts) |
@@ -319,5 +319,12 @@ Each design idea and where it lives in the code. Every intention is pinned in th
   inputs.
 - **Proposition granularity is a judgement call** — the model sometimes merges two related rules or
   splits one. Human review of the chunk output is still worth it.
-- **Small model, local trade-off:** a 26B local model is weaker than GPT-4/Claude at this — but it is
-  the *only* option when the data cannot leave the building. That trade is the entire point.
+- **We tried vector-clustered merge and it didn't work here — worth writing down.** The idea (embed
+  each person, cluster near-neighbours, LLM-verify) is sound, but the local embedder (`nomic-embed-text`)
+  can't resolve names: bare names all sit at ~cosine 1.0, and adding context just adds domain-homogeneous
+  noise (in a clinic chat everyone's context is "clinic stuff"), so no threshold separates people. The
+  *actual* duplicates in real data are orthographic (`Пискуновська`/`Піскуновська`, declensions), which
+  cheap **edit-distance** catches directly — so the merge nominates candidates by fuzzy string match and
+  lets the LLM adjudicate. A stronger embedder might revive the vector approach for nickname↔formal cases.
+- **Local trade-off:** a local 26B model is weaker than a frontier API at this — but it is the *only*
+  option when the data cannot leave the building. That trade is the entire point.
