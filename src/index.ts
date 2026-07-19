@@ -50,9 +50,9 @@ await warmup(ollamaIp);
 // ── PASS 1: anonymise (shared map across all chats → consistent tokens everywhere) ─────────────────
 log('Pass 1 — anonymise');
 const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ?? []), groups, windowN, log);
-// PASS 1.5 — the 3rd LLM loop: verify/merge duplicate identities (semantic, not string overlap).
-log('Pass 1.5 — entity-merge verification');
-await mergePass(ollamaIp, people, log);
+// PASS 1.5 — vector-clustered, LLM-verified identity merge (vector proposes candidates, LLM decides).
+log('Pass 1.5 — entity-merge verification (vector + LLM)');
+await mergePass(ollamaIp, people, chats.map((c) => c.doc.messages ?? []), log);
 const applyToAll = () => { for (const { doc } of chats) applyTokens(doc.messages ?? [], people); };
 applyToAll();
 

@@ -12,6 +12,7 @@
 import type { TgMessage, Person } from './types.ts';
 import { prompts } from './prompts.ts';
 import { askJson } from './ollama.ts';
+import { embed, clusterByVector } from './embed.ts';
 
 const norm = (s: string) => s.toLowerCase().trim();
 const flatten = (t: TgMessage['text']): string =>
@@ -91,41 +92,76 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
 }
 
 // ── PASS 1.5 — ENTITY-MERGE VERIFICATION (the 3rd LLM loop) ─────────────────────────────────────────
-// INTENTION: IDENTITY IS A HARD SEMANTIC JUDGEMENT — "IS THIS THE SAME PERSON?" IS AN LLM DECISION,
-// NEVER A STRING MATCH. Deterministic overlap merged a wife into her husband (shared surname). So here
-// we take every CANDIDATE pair (two people sharing a distinctive name-token) and ask the model, under
-// strict gender/surname rules, whether they are really one individual — merging only on a yes.
+// INTENTION: VECTOR PROPOSES, LLM DISPOSES. Two spellings of one person ("Байдо Саша" / "Байдо старший"
+// / "Александр Юрьевич Байдо") sit CLOSE in meaning-space even with no shared letters — so we cluster
+// people by embedding similarity to find CANDIDATES (cheap, high recall, catches Саша↔Александр), then
+// ask the LLM, under strict gender/surname rules, to make the final "same person?" call on each pair
+// (precision — so a wife is never merged into her husband just because their vectors are close).
 const MERGE_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' }, reason: { type: 'string' } }, required: ['same', 'reason'] };
-const MAX_MERGE_CHECKS = 400; // hard cap; if exceeded we log it (never a silent truncation)
+const MERGE_SIM = 0.80;        // vector-closeness to be worth an LLM check. TUNABLE. Loose is fine — the
+                               // LLM filters false neighbours; too high only risks missing a real pair.
+const MAX_MERGE_CHECKS = 500;  // hard cap on LLM calls; if exceeded we log it (never a silent truncation)
 
-export async function mergePass(ollamaIp: string, people: Person[], log: (s: string) => void): Promise<Person[]> {
-  const tokensOf = (p: Person) => new Set([...p.forms, p.canonical].flatMap((f) => f.trim().split(/\s+/)).map(norm).filter((t) => t.length >= 4));
+export async function mergePass(ollamaIp: string, people: Person[], chats: TgMessage[][], log: (s: string) => void): Promise<Person[]> {
+  if (people.length < 2) return people;
+
+  // 1) VECTOR PROPOSES — embed each person and cluster the close ones.
+  // CRITICAL: we embed name + CONTEXT, not the bare name. Bare names carry no signal (this embedder maps
+  // every short name to ~the same point). But "name + what's said about them" separates people — the same
+  // person shows up in similar contexts. So we grab a couple of message snippets that mention each person.
+  log(`   embedding ${people.length} people (name + context) → vector clusters…`);
+  const snippets = chats.flat().map((m) => flatten(m.text)).filter((t) => t.trim());
+  const contextFor = (p: Person) => {
+    const needles = p.forms.map(norm);
+    const hits: string[] = [];
+    for (const t of snippets) { if (needles.some((f) => t.toLowerCase().includes(f))) { hits.push(t.slice(0, 140)); if (hits.length >= 2) break; } }
+    return `${p.canonical} (${p.forms.join(', ')}) — ${hits.join(' | ') || 'no context'}`;
+  };
+  const texts = people.map(contextFor);
+  let clusters: number[][];
+  try {
+    const vectors = await embed(ollamaIp, texts);
+    clusters = clusterByVector(vectors, MERGE_SIM);
+  } catch (e) {
+    log(`   (embeddings unavailable — skipping vector merge: ${e instanceof Error ? e.message : e})`);
+    return people;
+  }
+  log(`   ${clusters.length} candidate cluster(s) to verify`);
+
+  // 2) LLM DISPOSES — inside each cluster, verify pairs and merge only the ones the model confirms.
+  const dead = new Set<number>();   // indices of people merged away
   let checks = 0, merges = 0, capped = false;
-  for (let i = 0; i < people.length; i++) {
-    for (let j = i + 1; j < people.length; j++) {
-      const a = people[i], b = people[j];
-      const ta = tokensOf(a), tb = tokensOf(b);
-      if (![...ta].some((t) => tb.has(t))) continue;   // candidates must share a distinctive token
-      if (checks >= MAX_MERGE_CHECKS) { capped = true; continue; }
-      checks++;
-      let r: { same?: boolean; reason?: string };
-      try {
-        r = await askJson(ollamaIp, prompts.mergeVerify({
-          A: JSON.stringify({ canonical: a.canonical, forms: a.forms }),
-          B: JSON.stringify({ canonical: b.canonical, forms: b.forms }),
-        }), MERGE_SCHEMA);
-      } catch { continue; }
-      if (r.same === true) {
-        a.forms = [...new Set([...a.forms, ...b.forms])];
-        log(`   ⇄ merged ${b.canonical} → ${a.token}  (${r.reason ?? 'same person'})`);
-        people.splice(j, 1); j--; merges++;
+  for (const cluster of clusters) {
+    const idx = cluster.filter((i) => !dead.has(i));
+    for (let a = 0; a < idx.length; a++) {
+      if (dead.has(idx[a])) continue;
+      for (let b = a + 1; b < idx.length; b++) {
+        if (dead.has(idx[b])) continue;
+        if (checks >= MAX_MERGE_CHECKS) { capped = true; continue; }
+        checks++;
+        const A = people[idx[a]], B = people[idx[b]];
+        let r: { same?: boolean; reason?: string };
+        try {
+          r = await askJson(ollamaIp, prompts.mergeVerify({
+            A: JSON.stringify({ canonical: A.canonical, forms: A.forms }),
+            B: JSON.stringify({ canonical: B.canonical, forms: B.forms }),
+          }), MERGE_SCHEMA);
+        } catch { continue; }
+        if (r.same === true) {
+          A.forms = [...new Set([...A.forms, ...B.forms])];
+          dead.add(idx[b]); merges++;
+          log(`   ⇄ merged ${B.canonical} → ${A.token}  (${r.reason ?? 'same person'})`);
+        }
       }
     }
   }
-  // renumber tokens per group so they stay 1..N after merges (tokens are only used at apply time)
+
+  // drop the merged-away people and renumber tokens per group (tokens are only used at apply time)
+  const kept = people.filter((_, i) => !dead.has(i));
+  people.length = 0; people.push(...kept);
   const counters: Record<string, number> = {};
   for (const p of people) { counters[p.group] = (counters[p.group] ?? 0) + 1; p.token = `${p.group}${counters[p.group]}`; }
-  log(`   merge pass: ${checks} pair(s) checked, ${merges} merged → ${people.length} people${capped ? ` (⚠ capped at ${MAX_MERGE_CHECKS} checks)` : ''}`);
+  log(`   vector-merge: ${checks} pair(s) verified, ${merges} merged → ${people.length} people${capped ? ` (⚠ capped at ${MAX_MERGE_CHECKS} checks)` : ''}`);
   return people;
 }
 

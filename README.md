@@ -291,7 +291,8 @@ Each design idea and where it lives in the code. Every intention is pinned in th
 | robust JSON out of an LLM | **`/api/chat` + tolerant parse** (no grammar constraint, `think:false`, salvage truncation) | `askJson` / `parseLoose` in [`src/ollama.ts`](./src/ollama.ts) |
 | roles are the caller's, not the tool's | **parameterised grouping** | `--groupingTags` in [`src/index.ts`](./src/index.ts) + [`prompts/01_anonymize_discover.md`](./prompts/01_anonymize_discover.md) |
 | keep different people apart | **gender/surname-aware coref** | strict rules in [`prompts/01…`](./prompts/01_anonymize_discover.md) |
-| "is this the same person?" is semantic | **entity-merge as an LLM loop (3rd pass)** | `mergePass()` in [`src/anonymize.ts`](./src/anonymize.ts) + [`prompts/03_merge_verify.md`](./prompts/03_merge_verify.md) · `INTENTION: IDENTITY IS A HARD SEMANTIC JUDGEMENT` |
+| find same-person candidates cheaply | **vector clustering** (embed name+context, cluster) | [`src/embed.ts`](./src/embed.ts) + `mergePass` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: VECTOR PROPOSES` |
+| "is this the same person?" is semantic | **LLM verify** the vector clusters (gender/surname strict) | `mergePass` + [`prompts/03_merge_verify.md`](./prompts/03_merge_verify.md) · `INTENTION: VECTOR PROPOSES, LLM DISPOSES` |
 | don't guess an ambiguous name | **ambiguity-safe apply** | `buildPairs()` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: AMBIGUITY-SAFE` |
 | self-contained knowledge units | **proposition-based chunking** | `chunkChat()` in [`src/chunk.ts`](./src/chunk.ts) + [`prompts/02…`](./prompts/02_chunk_propositions.md) |
 | model-decided overlap | **`abruptionOffset`** | window loop in [`src/chunk.ts`](./src/chunk.ts) |
