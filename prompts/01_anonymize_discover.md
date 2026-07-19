@@ -18,6 +18,10 @@ The first group, "{{GROUP0}}", is the chat's own PARTICIPANTS (the people writin
 appears MENTIONED in the messages belongs to one of the other groups — decide which from the meaning of
 the group name and the context. (If there is only one group, everyone goes there.)
 
+People are often referred to by first name + PATRONYMIC with no surname (e.g. "Олена Анатоліївна",
+"Іван Петрович"). These ARE real private people — list them and include the patronymic spelling in
+`forms`. Judge gender from the patronymic ending too (-ович/-йович = male, -івна/-ївна/-овна = female).
+
 DO NOT list (they are not private people to be tokenised): public figures, brands, companies, cities,
 and obvious placeholder / example names such as "Vasya Pupkin".
 

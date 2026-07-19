@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, basename, resolve } from 'node:path';
 import type { TgExport, TgMessage, Chunk } from './types.ts';
-import { discoverPeople, mergePass, applyTokens } from './anonymize.ts';
+import { discoverPeople, mergePass, qaPass, applyTokens } from './anonymize.ts';
 import { chunkChat } from './chunk.ts';
 import { warmup } from './ollama.ts';
 
@@ -53,10 +53,20 @@ const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ??
 // PASS 1.5 — the 3rd LLM loop: verify/merge duplicate identities (semantic, not string overlap).
 log('Pass 1.5 — entity-merge verification');
 await mergePass(ollamaIp, people, log);
-for (const { file, doc } of chats) {
-  applyTokens(doc.messages ?? [], people);
-  writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
+const applyToAll = () => { for (const { doc } of chats) applyTokens(doc.messages ?? [], people); };
+applyToAll();
+
+// PASS 1.9 — QA leak scan: re-read the tokenised text, catch anyone discovery MISSED, re-apply, repeat
+// until clean. This is what makes the output *verified* anonymised, not just *probably*.
+log('Pass 1.9 — QA leak scan');
+for (let round = 1; round <= 3; round++) {
+  const found = await qaPass(ollamaIp, chats.map((c) => c.doc.messages ?? []), people, groups, windowN, log);
+  if (found === 0) { log(`   QA round ${round}: ✓ clean — every name is a token`); break; }
+  log(`   QA round ${round}: caught ${found} missed name(s) → re-applying`);
+  applyToAll();
+  if (round === 3) log(`   QA hit the 3-round limit — re-run if the last round still found leaks`);
 }
+for (const { file, doc } of chats) writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
 writeFileSync(join(ANON_DIR, 'names-map.json'), JSON.stringify({ people }, null, 2), 'utf8'); // AUDIT file
 const perGroup = groups.map((g) => `${people.filter((p) => p.group === g).length} ${g}`).join(' + ');
 log(`  → ${perGroup} mapped → anonymized/\n`);

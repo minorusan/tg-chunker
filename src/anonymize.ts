@@ -129,6 +129,42 @@ export async function mergePass(ollamaIp: string, people: Person[], log: (s: str
   return people;
 }
 
+// ── PASS 1.9 — QA LEAK SCAN ─────────────────────────────────────────────────────────────────────────
+// INTENTION: VERIFY, DON'T ASSUME. The mapped-name check is BLIND to a person we never discovered. So we
+// re-read the ALREADY-TOKENISED text and ask the model for any real name that is still NOT a token —
+// those are misses. They get added to the map (and the caller re-applies + re-scans until clean). Without
+// this a missed person's real name ships in the clear and nothing notices.
+const looksLikeToken = (s: string) => /^[a-z]+\d+$/i.test(s.trim());
+
+export async function qaPass(ollamaIp: string, chats: TgMessage[][], people: Person[], groups: string[], windowN: number, log: (s: string) => void): Promise<number> {
+  const leakGroup = groups[groups.length - 1]; // a missed person defaults to the last group (e.g. patient)
+  const counters: Record<string, number> = {};
+  for (const p of people) { const n = parseInt(p.token.replace(/^\D+/, ''), 10); counters[p.group] = Math.max(counters[p.group] ?? 0, Number.isNaN(n) ? 0 : n); }
+  let added = 0;
+  for (const messages of chats) {
+    for (let start = 0; start < messages.length; start += windowN) {
+      const msgs = messages.slice(start, start + windowN).map((m) => ({ id: m.id, text: flatten(m.text) })).filter((m) => m.text.trim());
+      if (msgs.length === 0) continue;
+      let r: { leaks?: Array<{ canonical?: string; forms?: string[] }> };
+      try { r = await askJson(ollamaIp, prompts.qaLeakScan({ MESSAGES: JSON.stringify(msgs) })); } catch { continue; }
+      for (const L of r.leaks ?? []) {
+        const canonical = String(L.canonical ?? '').trim();
+        if (!canonical || looksLikeToken(canonical)) continue;              // ignore tokens reported by mistake
+        const forms = [...new Set([...(Array.isArray(L.forms) ? L.forms.map(String) : []), canonical].map((s) => s.trim()).filter((s) => s && !looksLikeToken(s)))];
+        const formsN = forms.map(norm);
+        let e = people.find((x) => norm(x.canonical) === norm(canonical) || x.forms.some((f) => formsN.includes(norm(f))));
+        if (!e) {
+          e = { token: `${leakGroup}${++counters[leakGroup]}`, group: leakGroup, canonical, forms: [] };
+          people.push(e); added++;
+          log(`   ✗ QA leak caught: ${canonical} → ${e.token}`);
+        }
+        e.forms = [...new Set([...e.forms, ...forms])];
+      }
+    }
+  }
+  return added;
+}
+
 /** real→token pairs + name-part derivation (so a lone surname is caught), longest-first.
  *  INTENTION: AMBIGUITY-SAFE — a bare name-part is only derived if it maps to EXACTLY ONE person. If a
  *  surname/first-name is shared by two people (e.g. two "Головко"), we do NOT guess which token a lone
