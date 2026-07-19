@@ -45,7 +45,7 @@ const CHUNK_SCHEMA = {
  * @param windowN     window size — "N regulated by how much GPU you have" :)
  */
 export async function chunkChat(
-  ollamaIp: string, documentId: string, sourceFile: string, title: string,
+  ollamaIp: string, documentId: string, sourceFile: string, title: string, domain: string,
   messages: TgMessage[], windowN: number, log: (s: string) => void,
 ): Promise<Chunk[]> {
   const chunks: Chunk[] = [];
@@ -78,7 +78,7 @@ export async function chunkChat(
         chunk_index: chunkIndex,                                          // ordinal within THIS doc
         text: b.thought.trim(),
         title,
-        domain: 'dental_clinic_admin',
+        domain,
         document_type: 'telegram_chat',
         language: 'uk-ru',
         actors: Array.isArray(b.actors) ? b.actors : [],

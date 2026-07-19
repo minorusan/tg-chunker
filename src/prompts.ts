@@ -22,6 +22,6 @@ const ANON = load('01_anonymize_discover.md');
 const CHUNK = load('02_chunk_propositions.md');
 
 export const prompts = {
-  anonymizeDiscover: (vars: { ROSTER: string; PEOPLE: string; MESSAGES: string }) => fill(ANON, vars),
+  anonymizeDiscover: (vars: { GROUPS: string; GROUP0: string; PEOPLE: string; MESSAGES: string }) => fill(ANON, vars),
   chunkPropositions: (vars: { WINDOW_START: string; WINDOW_END: string; MESSAGES: string }) => fill(CHUNK, vars),
 };

@@ -19,7 +19,12 @@ const arg = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); retur
 const sourceDir = arg('sourceDir');
 const ollamaIp = arg('ollamaIp', '127.0.0.1:11434')!;
 const windowN = parseInt(arg('window', '12')!, 10);   // N — bounded by how much context the GPU holds
-if (!sourceDir) { console.error('usage: node src/index.ts --sourceDir <dir> --ollamaIp <host:port> [--window N]'); process.exit(1); }
+// The groups people are sorted into. Generic: default employee,patient — but pass anything
+// (goodies,baddies / staff,client,vendor / …). The FIRST group is the chat's own participants.
+const groups = (arg('groupingTags', 'employee,patient')!).split(',').map((g) => g.trim()).filter(Boolean);
+const domain = arg('domain', 'chat')!;                // free-form metadata tag for the KB
+if (!sourceDir) { console.error('usage: node src/index.ts --sourceDir <dir> --ollamaIp <host:port> [--groupingTags employee,patient] [--domain chat] [--window N]'); process.exit(1); }
+if (groups.length === 0) { console.error('--groupingTags needs at least one group'); process.exit(1); }
 
 const HERE = resolve(join(sourceDir, '..'));           // project root (sample_input/..)
 const ANON_DIR = join(HERE, 'anonymized');
@@ -38,19 +43,20 @@ if (!files.length) { console.error(`no .json chats in ${sourceDir}`); process.ex
 const chats = files.map((file) => ({ file, doc: JSON.parse(readFileSync(file, 'utf8')) as TgExport }));
 
 log(`tg-chunker — local model @ ${ollamaIp} (offline)`);
-log(`  ${files.length} chat(s), ${chats.reduce((n, c) => n + (c.doc.messages?.length ?? 0), 0)} messages, window N=${windowN}\n`);
+log(`  ${files.length} chat(s), ${chats.reduce((n, c) => n + (c.doc.messages?.length ?? 0), 0)} messages, window N=${windowN}`);
+log(`  groups: ${groups.join(', ')}  (first = chat participants)\n`);
 await warmup(ollamaIp);
 
 // ── PASS 1: anonymise (shared map across all chats → consistent tokens everywhere) ─────────────────
 log('Pass 1 — anonymise');
-const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ?? []), windowN, log);
+const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ?? []), groups, windowN, log);
 for (const { file, doc } of chats) {
   applyTokens(doc.messages ?? [], people);
   writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
 }
 writeFileSync(join(ANON_DIR, 'names-map.json'), JSON.stringify({ people }, null, 2), 'utf8'); // AUDIT file
-const emp = people.filter((p) => p.class === 'employee').length, pat = people.filter((p) => p.class === 'patient').length;
-log(`  → ${emp} employees + ${pat} patients mapped → anonymized/\n`);
+const perGroup = groups.map((g) => `${people.filter((p) => p.group === g).length} ${g}`).join(' + ');
+log(`  → ${perGroup} mapped → anonymized/\n`);
 
 // ── PASS 2: chunk each anonymised chat into propositions ───────────────────────────────────────────
 if (args.includes('--no-chunk')) { log('(--no-chunk: skipping proposition extraction)'); process.exit(0); }
@@ -59,7 +65,7 @@ const allChunks: Chunk[] = [];
 for (const { file, doc } of chats) {
   const id = docId(file);
   log(` ▸ ${basename(file)} (document_id: ${id})`);
-  const chunks = await chunkChat(ollamaIp, id, `sample_input/${basename(file)}`, doc.name ?? id, doc.messages ?? [], windowN, log);
+  const chunks = await chunkChat(ollamaIp, id, `sample_input/${basename(file)}`, doc.name ?? id, domain, doc.messages ?? [], windowN, log);
   allChunks.push(...chunks);
 }
 

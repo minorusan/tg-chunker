@@ -25,10 +25,11 @@ export interface TgExport {
 }
 
 /** One real person in the anonymisation map. `forms` = every spelling seen; `token` = the stable
- *  replacement (employee1 / patient3). Written to names-map.json (the audit file). */
+ *  replacement built from the caller's group (employee1 / patient3 / goodie2 / …). `group` is one of
+ *  the caller-supplied --groupingTags. Written to names-map.json (the audit file). */
 export interface Person {
   token: string;
-  class: 'employee' | 'patient';
+  group: string;            // one of --groupingTags (e.g. "employee", "patient", "goodie"…)
   canonical: string;
   forms: string[];
 }
@@ -55,10 +56,10 @@ export interface Chunk {
   text: string;             // the proposition — the "blob of sense"
   // --- extra metadata (recommended by the assignment + needed for real retrieval) ---
   title: string;            // the chat title
-  domain: string;           // "dental_clinic_admin"
+  domain: string;           // caller-supplied --domain (default "chat")
   document_type: string;    // "telegram_chat"
-  language: string;         // "uk"/"ru" (mixed) → "uk-ru"
-  actors: string[];         // tokens involved (patient2, employee1…)
+  language: string;         // detected/declared, e.g. "uk-ru"
+  actors: string[];         // tokens involved (patient2, employee1, goodie3…)
   message_ids: number[];    // provenance: which raw messages this proposition came from
   timeframe: string[];      // the message date(s) → recency / "is this still valid?" checks
 }
