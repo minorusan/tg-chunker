@@ -1,0 +1,12 @@
+{
+  "name": "tg-chunker",
+  "version": "1.0.0",
+  "description": "Generalist Telegram-chat anonymiser + RAG proposition-chunker, powered entirely by a local LLM (Ollama). Prepares a privacy-safe knowledge base for a RAG agent.",
+  "type": "module",
+  "bin": { "tg-chunker": "src/index.ts" },
+  "scripts": {
+    "start": "node src/index.ts --sourceDir ./sample_input --ollamaIp 127.0.0.1:11434"
+  },
+  "engines": { "node": ">=22.6" },
+  "license": "MIT"
+}

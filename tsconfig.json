@@ -1,0 +1,15 @@
+{
+  "//": "For editor/type-checking only. Node 22.6+ runs the .ts files directly (type stripping), so no build step is needed to run the tool.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2023"]
+  },
+  "include": ["src"]
+}

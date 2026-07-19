@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+
+# NOTE: anonymized/ and output/ are intentionally COMMITTED — the whole point is to let a reviewer
+# open the repo and see the produced results (anonymised chats + the extracted chunks) without running
+# anything. They are safe to publish precisely because every real person has been replaced by a token.
