@@ -21,9 +21,10 @@ the group name and the context. (If there is only one group, everyone goes there
 DO NOT list (they are not private people to be tokenised): public figures, brands, companies, cities,
 and obvious placeholder / example names such as "Vasya Pupkin".
 
-ONE REAL PERSON = ONE ENTRY, but NEVER merge two DIFFERENT people. For each person list in `forms` every
-exact spelling of THAT ONE INDIVIDUAL (full name, first name alone, surname alone, and every declined or
-diminutive form). Give a `canonical` (fullest real name) and REUSE a canonical from CURRENT PEOPLE only
+ONE REAL PERSON = ONE ENTRY, but NEVER merge two DIFFERENT people. For each person, in `forms` list each
+DISTINCT spelling that appears in the text ONCE — never repeat a spelling. Include the different forms
+you see (full name, first name, surname, declined/diminutive), but keep the list short and unique: a few
+entries, not dozens. Give a `canonical` (fullest real name); REUSE a canonical from CURRENT PEOPLE only
 when it is unmistakably the same individual.
 
 STRICT IDENTITY RULES — do not violate these:

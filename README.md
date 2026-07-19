@@ -73,9 +73,11 @@ raw chats ──▶ Pass 1: anonymise ──▶ anonymized/*.json + names-map.js
 ```
 
 Two design decisions that keep it robust:
-- **Structured outputs.** Every model call is constrained by a **JSON schema** (Ollama structured
-  outputs), so the keys and the group names are always exact — the model can't rename a field and
-  silently drop a person.
+- **Tolerant JSON, not grammar-constrained.** We call `/api/chat` (proper chat templating), ask for
+  JSON in the prompt, and parse it out of the text. We deliberately *avoid* Ollama's grammar-constrained
+  JSON/schema mode: it pushes the sampler into a repetition collapse (a decoding artefact, not a model
+  limit). The parser tolerates key variants and salvages a truncated tail, so one runaway field never
+  drops a whole record. (See the write-up in [`src/ollama.ts`](./src/ollama.ts).)
 - **Decide vs. apply.** The model never rewrites a message; it only reports *what* to swap and *what*
   a proposition is. The code does the deterministic edits. That makes the whole run reproducible.
 
@@ -145,7 +147,157 @@ semantic work. Deterministic-where-possible, semantic-where-needed.
 - **Boundaries:** respect meaning — the model splits where the topic changes, so chunks stay
   internally coherent and self-readable.
 
-<!-- EXAMPLES_PLACEHOLDER -->
+## Example chunks
+
+Real output from `sample_input/` (see [`output/chunks.jsonl`](./output/chunks.jsonl) and the readable [`output/chunks.md`](./output/chunks.md)).
+
+A **proposition** (a rule, self-contained):
+```json
+{
+  "chunk_type": "proposition",
+  "chunk_id": "clinic_admin_chat_001",
+  "document_id": "clinic_admin_chat",
+  "source_file": "sample_input/clinic_admin_chat.json",
+  "chunk_index": 1,
+  "text": "Оновлене правило по гігієні: поточна вартість становить 2300 грн, а 1800 грн коштує лише тоді, коли пацієнт на брекетах і процедура проводилася лише з використанням порошка (уточнюйте у лікаря).",
+  "title": "Адмінка Клініки",
+  "domain": "clinic_admin",
+  "document_type": "telegram_chat",
+  "language": "uk-ru",
+  "actors": [
+    "employee1"
+  ],
+  "message_ids": [
+    2,
+    3,
+    4
+  ],
+  "timeframe": [
+    "2024-02-01T09:00:00",
+    "2024-02-01T09:01:00",
+    "2024-02-01T09:02:00"
+  ]
+}
+```
+
+A **proposition tied to a person** (note `actors` + `timeframe`):
+```json
+{
+  "chunk_type": "proposition",
+  "chunk_id": "clinic_admin_chat_002",
+  "document_id": "clinic_admin_chat",
+  "source_file": "sample_input/clinic_admin_chat.json",
+  "chunk_index": 2,
+  "text": "У випадку з patient1, якщо онлайн-консультація затягується понад 30 хвилин (наприклад, тривала годину), проводиться списання 1000 грн; при цьому такі тривалі онлайн-консультації для patient1 більше не беруться.",
+  "title": "Адмінка Клініки",
+  "domain": "clinic_admin",
+  "document_type": "telegram_chat",
+  "language": "uk-ru",
+  "actors": [
+    "employee2",
+    "patient1"
+  ],
+  "message_ids": [
+    6,
+    7,
+    8,
+    9
+  ],
+  "timeframe": [
+    "2024-02-03T12:00:00",
+    "2024-02-03T12:01:00",
+    "2024-02-03T12:02:00",
+    "2024-02-03T12:03:00"
+  ]
+}
+```
+
+The **same person in a different chat** — same token, different `source_file`:
+```json
+{
+  "chunk_type": "proposition",
+  "chunk_id": "clinic_reception_chat_001",
+  "document_id": "clinic_reception_chat",
+  "source_file": "sample_input/clinic_reception_chat.json",
+  "chunk_index": 1,
+  "text": "patient1 досі не оплатила акт за 03.06, employee3 має передзвонити їй ще раз сьогодні.",
+  "title": "Ресепшн",
+  "domain": "clinic_admin",
+  "document_type": "telegram_chat",
+  "language": "uk-ru",
+  "actors": [
+    "patient1",
+    "employee3",
+    "employee2"
+  ],
+  "message_ids": [
+    3,
+    4,
+    5
+  ],
+  "timeframe": [
+    "2024-06-01T08:32:00",
+    "2024-06-01T08:40:00",
+    "2024-06-01T08:41:00"
+  ]
+}
+```
+
+A **person chunk** — the entity-linking router. Matched by an alias, it points at every proposition that mentions her (`mentioned_at`), so "tell me everything about patient1" is a two-hop lookup:
+```json
+{
+  "chunk_type": "person",
+  "chunk_id": "person_patient1",
+  "document_id": "_people",
+  "source_file": "anonymized/names-map.json",
+  "chunk_index": 0,
+  "text": "patient1 — a patient. Appears in 2 discussion(s).",
+  "title": "People",
+  "domain": "clinic_admin",
+  "document_type": "entity_card",
+  "language": "uk-ru",
+  "actors": [
+    "patient1"
+  ],
+  "message_ids": [],
+  "timeframe": [],
+  "group": "patient",
+  "aliases": [
+    "Світлані Головко",
+    "Світлани",
+    "Свєту",
+    "Світлана Головко",
+    "Світлані",
+    "Свєті"
+  ],
+  "mentioned_at": [
+    "clinic_admin_chat_002",
+    "clinic_reception_chat_001"
+  ]
+}
+```
+
+
+---
+
+## Review please — idea → code map
+
+Each design idea and where it lives in the code. Every intention is pinned in the source as an
+`// INTENTION: …` comment IN CAPS so it reads next to the implementation.
+
+| idea (the *why*) | technique | code (the *what*) |
+|---|---|---|
+| private prep, no cloud | local LLM only | [`src/ollama.ts`](./src/ollama.ts) — direct Ollama, `--ollamaIp` |
+| robust JSON out of an LLM | **`/api/chat` + tolerant parse** (no grammar constraint, `think:false`, salvage truncation) | `askJson` / `parseLoose` in [`src/ollama.ts`](./src/ollama.ts) |
+| roles are the caller's, not the tool's | **parameterised grouping** | `--groupingTags` in [`src/index.ts`](./src/index.ts) + [`prompts/01_anonymize_discover.md`](./prompts/01_anonymize_discover.md) |
+| keep different people apart | **gender/surname-aware coref** | strict rules in [`prompts/01…`](./prompts/01_anonymize_discover.md) |
+| "is this the same person?" is semantic | **entity-merge as an LLM loop (3rd pass)** | `mergePass()` in [`src/anonymize.ts`](./src/anonymize.ts) + [`prompts/03_merge_verify.md`](./prompts/03_merge_verify.md) · `INTENTION: IDENTITY IS A HARD SEMANTIC JUDGEMENT` |
+| don't guess an ambiguous name | **ambiguity-safe apply** | `buildPairs()` in [`src/anonymize.ts`](./src/anonymize.ts) · `INTENTION: AMBIGUITY-SAFE` |
+| self-contained knowledge units | **proposition-based chunking** | `chunkChat()` in [`src/chunk.ts`](./src/chunk.ts) + [`prompts/02…`](./prompts/02_chunk_propositions.md) |
+| model-decided overlap | **`abruptionOffset`** | window loop in [`src/chunk.ts`](./src/chunk.ts) |
+| people vs sense are different data | **`chunk_type` namespacing** | `Chunk.chunk_type` in [`src/types.ts`](./src/types.ts) · `INTENTION: TWO CHUNK TYPES` |
+| "tell me everything about X" | **entity linking / graph-RAG** — person chunks as routers | Pass 2.5 in [`src/index.ts`](./src/index.ts) · `INTENTION: PEOPLE ARE ROUTERS` — `mentioned_at` back-refs |
+| recency / "still valid?" | **temporal metadata** | `timeframe` in [`src/chunk.ts`](./src/chunk.ts) |
 
 ---
 

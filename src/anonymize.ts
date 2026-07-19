@@ -56,17 +56,29 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
       const prompt = prompts.anonymizeDiscover({
         GROUPS: groups.join(', '), GROUP0: groups[0], PEOPLE: peopleView(), MESSAGES: JSON.stringify(msgs),
       });
-      let found: { people?: Array<{ canonical?: string; group?: string; forms?: string[] }> };
+      let found: { people?: Array<Record<string, unknown>> };
       try { found = await askJson(ollamaIp, prompt, schema); } catch { continue; }
 
-      for (const p of found.people ?? []) {
-        if (!p.canonical) continue;
-        if (!Array.isArray(p.forms) || p.forms.length === 0) p.forms = [p.canonical]; // never drop a person
+      for (const raw of found.people ?? []) {
+        const canonical = String(raw.canonical ?? raw.name ?? raw.full_name ?? '').trim();
+        if (!canonical) continue;
+        // Tolerant: gemma sometimes returns the spellings under a different key (full_name/names/…).
+        // Collect from every plausible key; if still empty, fall back to the canonical so a detected
+        // person is NEVER dropped (a dropped person = a leaked real name).
+        let forms: string[] = [];
+        for (const k of ['forms', 'names', 'aliases', 'spellings', 'full_name', 'name']) {
+          const v = raw[k];
+          if (Array.isArray(v)) forms.push(...v.map(String));
+          else if (typeof v === 'string' && k !== 'name' && k !== 'full_name') forms.push(v);
+        }
+        forms = [...new Set(forms.map((s) => s.trim()).filter(Boolean))];
+        if (forms.length === 0) forms = [canonical];
+        const group = groups.includes(String(raw.group)) ? String(raw.group) : groups[groups.length - 1];
+        const p = { canonical, group, forms };
         const formsN = p.forms.map(norm);
         // same person only if canonical matches or a spelling overlaps one we already know
         let e = people.find((x) => norm(x.canonical) === norm(p.canonical) || x.forms.some((f) => formsN.includes(norm(f))));
         if (!e) {
-          const group = groups.includes(p.group ?? '') ? p.group! : groups[groups.length - 1];
           e = { token: `${group}${++counters[group]}`, group, canonical: p.canonical, forms: [] };
           people.push(e);
           log(`   + ${group}: ${p.canonical} → ${e.token}`);
@@ -78,12 +90,58 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
   return people;
 }
 
-/** real→token pairs + name-part derivation (so a lone surname is caught), longest-first. */
+// ── PASS 1.5 — ENTITY-MERGE VERIFICATION (the 3rd LLM loop) ─────────────────────────────────────────
+// INTENTION: IDENTITY IS A HARD SEMANTIC JUDGEMENT — "IS THIS THE SAME PERSON?" IS AN LLM DECISION,
+// NEVER A STRING MATCH. Deterministic overlap merged a wife into her husband (shared surname). So here
+// we take every CANDIDATE pair (two people sharing a distinctive name-token) and ask the model, under
+// strict gender/surname rules, whether they are really one individual — merging only on a yes.
+const MERGE_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' }, reason: { type: 'string' } }, required: ['same', 'reason'] };
+const MAX_MERGE_CHECKS = 400; // hard cap; if exceeded we log it (never a silent truncation)
+
+export async function mergePass(ollamaIp: string, people: Person[], log: (s: string) => void): Promise<Person[]> {
+  const tokensOf = (p: Person) => new Set([...p.forms, p.canonical].flatMap((f) => f.trim().split(/\s+/)).map(norm).filter((t) => t.length >= 4));
+  let checks = 0, merges = 0, capped = false;
+  for (let i = 0; i < people.length; i++) {
+    for (let j = i + 1; j < people.length; j++) {
+      const a = people[i], b = people[j];
+      const ta = tokensOf(a), tb = tokensOf(b);
+      if (![...ta].some((t) => tb.has(t))) continue;   // candidates must share a distinctive token
+      if (checks >= MAX_MERGE_CHECKS) { capped = true; continue; }
+      checks++;
+      let r: { same?: boolean; reason?: string };
+      try {
+        r = await askJson(ollamaIp, prompts.mergeVerify({
+          A: JSON.stringify({ canonical: a.canonical, forms: a.forms }),
+          B: JSON.stringify({ canonical: b.canonical, forms: b.forms }),
+        }), MERGE_SCHEMA);
+      } catch { continue; }
+      if (r.same === true) {
+        a.forms = [...new Set([...a.forms, ...b.forms])];
+        log(`   ⇄ merged ${b.canonical} → ${a.token}  (${r.reason ?? 'same person'})`);
+        people.splice(j, 1); j--; merges++;
+      }
+    }
+  }
+  // renumber tokens per group so they stay 1..N after merges (tokens are only used at apply time)
+  const counters: Record<string, number> = {};
+  for (const p of people) { counters[p.group] = (counters[p.group] ?? 0) + 1; p.token = `${p.group}${counters[p.group]}`; }
+  log(`   merge pass: ${checks} pair(s) checked, ${merges} merged → ${people.length} people${capped ? ` (⚠ capped at ${MAX_MERGE_CHECKS} checks)` : ''}`);
+  return people;
+}
+
+/** real→token pairs + name-part derivation (so a lone surname is caught), longest-first.
+ *  INTENTION: AMBIGUITY-SAFE — a bare name-part is only derived if it maps to EXACTLY ONE person. If a
+ *  surname/first-name is shared by two people (e.g. two "Головко"), we do NOT guess which token a lone
+ *  mention means; the full-name mentions still resolve. Prevents cross-person mis-assignment. */
 function buildPairs(people: Person[]): Array<{ real: string; token: string }> {
   const pairs = people.flatMap((p) => p.forms.map((f) => ({ real: f, token: p.token })));
   const seen = new Set(pairs.map((p) => norm(p.real)));
-  for (const p of [...pairs]) for (const part of p.real.trim().split(/\s+/))
-    if (part.length >= 3 && !seen.has(norm(part))) { pairs.push({ real: part, token: p.token }); seen.add(norm(part)); }
+  // count which token(s) each candidate part belongs to
+  const partTokens = new Map<string, Set<string>>();
+  for (const p of people) for (const f of p.forms) for (const part of f.trim().split(/\s+/))
+    if (part.length >= 3) (partTokens.get(norm(part)) ?? partTokens.set(norm(part), new Set()).get(norm(part))!).add(p.token);
+  for (const [part, tokens] of partTokens)
+    if (tokens.size === 1 && !seen.has(part)) { pairs.push({ real: part, token: [...tokens][0] }); seen.add(part); }
   return pairs.sort((a, b) => b.real.length - a.real.length);
 }
 
