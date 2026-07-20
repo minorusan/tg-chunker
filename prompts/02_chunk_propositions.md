@@ -21,6 +21,8 @@ this window may contain more than one thought.
 Group the messages into **propositions** — each a SELF-CONTAINED unit of meaning (a rule, a fact, a
 situation, a decision, a protocol) that reads on its own and could answer a real question later. Rewrite
 each as one clear standalone statement; keep the tokens (`patientN`, `employeeN`) exactly as they are.
+Write each proposition in the SAME LANGUAGE as the source messages (do NOT translate to English) —
+fidelity to the original wording matters for a knowledge base.
 
 Rules:
 - A proposition may span several messages — list their ids in `messageIds`.

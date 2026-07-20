@@ -1,0 +1,71 @@
+{
+  "name": "Ресепшн",
+  "type": "private_group",
+  "id": 1002,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2024-06-01T08:30:00",
+      "from": "employee3",
+      "from_id": "user3",
+      "text": "Нагадування на сьогодні."
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2024-06-01T08:31:00",
+      "from": "employee3",
+      "from_id": "user3",
+      "text": "patient3 — нагадати про гігієну, записана на 24 вересня."
+    },
+    {
+      "id": 3,
+      "type": "message",
+      "date": "2024-06-01T08:32:00",
+      "from": "employee3",
+      "from_id": "user3",
+      "text": "patient1 — досі не оплатила акт за 03.06, грошей нема."
+    },
+    {
+      "id": 4,
+      "type": "message",
+      "date": "2024-06-01T08:40:00",
+      "from": "employee2",
+      "from_id": "user2",
+      "text": "По patient1 я в курсі, вона проблемна. Передзвони patient1 ще раз сьогодні."
+    },
+    {
+      "id": 5,
+      "type": "message",
+      "date": "2024-06-01T08:41:00",
+      "from": "employee3",
+      "from_id": "user3",
+      "text": "Ок, передзвоню."
+    },
+    {
+      "id": 6,
+      "type": "message",
+      "date": "2024-06-02T09:00:00",
+      "from": "employee2",
+      "from_id": "user2",
+      "text": "patient3 видаляла всі зуби, буде повна імплантація."
+    },
+    {
+      "id": 7,
+      "type": "message",
+      "date": "2024-06-02T09:01:00",
+      "from": "employee2",
+      "from_id": "user2",
+      "text": "По patient3 — не забудь додати рахунок на платформу, як казав employee1."
+    },
+    {
+      "id": 8,
+      "type": "message",
+      "date": "2024-06-02T09:10:00",
+      "from": "employee3",
+      "from_id": "user3",
+      "text": "Записала. По patient3 все занесла в картку."
+    }
+  ]
+}

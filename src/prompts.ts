@@ -20,8 +20,12 @@ function fill(template: string, vars: Record<string, string>): string {
 
 const ANON = load('01_anonymize_discover.md');
 const CHUNK = load('02_chunk_propositions.md');
+const MERGE = load('03_merge_verify.md');
+const QA = load('04_qa_leakscan.md');
 
 export const prompts = {
   anonymizeDiscover: (vars: { GROUPS: string; GROUP0: string; PEOPLE: string; MESSAGES: string }) => fill(ANON, vars),
   chunkPropositions: (vars: { WINDOW_START: string; WINDOW_END: string; MESSAGES: string }) => fill(CHUNK, vars),
+  mergeVerify: (vars: { A: string; B: string }) => fill(MERGE, vars),
+  qaLeakScan: (vars: { MESSAGES: string }) => fill(QA, vars),
 };

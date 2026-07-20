@@ -62,36 +62,43 @@ export async function chunkChat(
     if (msgs.length === 0) { start += windowN; continue; }
 
     log(`   window msgs ${start + 1}–${end + 1}/${messages.length}`);
-    let res: ChunkWindowResult;
+    let res: Record<string, unknown>;
     try {
       res = await askJson(ollamaIp, prompts.chunkPropositions({
         WINDOW_START: String(start + 1), WINDOW_END: String(end + 1), MESSAGES: JSON.stringify(msgs, null, 0),
       }), CHUNK_SCHEMA);
     } catch { start += windowN; continue; }
 
-    for (const b of res.blobs ?? []) {
-      if (!b.thought || !b.thought.trim()) continue;
+    // Tolerant parsing: gemma may name the array `blobs` or `propositions`, and a proposition's text
+    // `thought`/`text`, its ids `messageIds`/`message_ids`. Accept them all so we never silently drop work.
+    const blobs = (Array.isArray(res.blobs) ? res.blobs : Array.isArray(res.propositions) ? res.propositions : []) as Array<Record<string, unknown>>;
+    for (const b of blobs) {
+      const thought = String(b.thought ?? b.text ?? '').trim();
+      if (!thought) continue;
+      const arr = (v: unknown) => (Array.isArray(v) ? v : []);
       chunks.push({
+        chunk_type: 'proposition',
         chunk_id: `${documentId}_${String(chunkIndex).padStart(3, '0')}`, // globally unique
         document_id: documentId,
         source_file: sourceFile,
         chunk_index: chunkIndex,                                          // ordinal within THIS doc
-        text: b.thought.trim(),
+        text: thought,
         title,
         domain,
         document_type: 'telegram_chat',
         language: 'uk-ru',
-        actors: Array.isArray(b.actors) ? b.actors : [],
-        message_ids: Array.isArray(b.messageIds) ? b.messageIds : [],
-        timeframe: Array.isArray(b.timeframe) ? b.timeframe : [],
+        actors: arr(b.actors).map(String),
+        message_ids: arr(b.messageIds ?? b.message_ids).map(Number).filter((n) => !Number.isNaN(n)),
+        timeframe: arr(b.timeframe).map(String),
       });
-      log(`     • ${b.thought.trim().slice(0, 70)}${b.thought.length > 70 ? '…' : ''}`);
+      log(`     • ${thought.slice(0, 70)}${thought.length > 70 ? '…' : ''}`);
       chunkIndex++;
     }
 
     // Advance the window. The model's negative offset backs us up to re-read a cut-off thought.
     // We clamp so we ALWAYS move forward by at least one message (no infinite loop).
-    const offset = Number.isFinite(res.abruptionOffset) ? Math.min(0, Math.trunc(res.abruptionOffset)) : 0;
+    const rawOffset = Number(res.abruptionOffset ?? res.abruption_offset ?? 0);
+    const offset = Number.isFinite(rawOffset) ? Math.min(0, Math.trunc(rawOffset)) : 0;
     const step = Math.max(1, windowN + offset);
     if (offset < 0) log(`     ↩ abruption: re-reading last ${-offset} message(s) in the next window`);
     start += step;

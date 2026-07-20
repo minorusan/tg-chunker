@@ -1,0 +1,92 @@
+{
+  "people": [
+    {
+      "token": "employee1",
+      "group": "employee",
+      "canonical": "Олег",
+      "forms": [
+        "Олег"
+      ],
+      "mentionedAt": [
+        "clinic_admin_chat_000",
+        "clinic_admin_chat_001",
+        "clinic_admin_chat_003",
+        "clinic_admin_chat_004",
+        "clinic_admin_chat_005",
+        "clinic_reception_chat_002",
+        "clinic_scripts_chat_000",
+        "clinic_scripts_chat_001",
+        "clinic_scripts_chat_002"
+      ]
+    },
+    {
+      "token": "employee2",
+      "group": "employee",
+      "canonical": "Марина",
+      "forms": [
+        "Марина"
+      ],
+      "mentionedAt": [
+        "clinic_admin_chat_002",
+        "clinic_admin_chat_004",
+        "clinic_reception_chat_001",
+        "clinic_reception_chat_002"
+      ]
+    },
+    {
+      "token": "employee3",
+      "group": "employee",
+      "canonical": "Ірина",
+      "forms": [
+        "Ірина"
+      ],
+      "mentionedAt": [
+        "clinic_reception_chat_000",
+        "clinic_reception_chat_001",
+        "clinic_reception_chat_002"
+      ]
+    },
+    {
+      "token": "patient1",
+      "group": "patient",
+      "canonical": "Світлана Головко",
+      "forms": [
+        "Світлані Головко",
+        "Світлани",
+        "Свєту",
+        "Світлана Головко",
+        "Світлані",
+        "Свєті"
+      ],
+      "mentionedAt": [
+        "clinic_admin_chat_002",
+        "clinic_reception_chat_001"
+      ]
+    },
+    {
+      "token": "patient2",
+      "group": "patient",
+      "canonical": "Петро Коваль",
+      "forms": [
+        "Петру Ковалю"
+      ],
+      "mentionedAt": [
+        "clinic_admin_chat_004"
+      ]
+    },
+    {
+      "token": "patient3",
+      "group": "patient",
+      "canonical": "Оксана Федій",
+      "forms": [
+        "Оксана Федій",
+        "Оксані",
+        "Федій"
+      ],
+      "mentionedAt": [
+        "clinic_reception_chat_000",
+        "clinic_reception_chat_002"
+      ]
+    }
+  ]
+}

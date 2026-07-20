@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, basename, resolve } from 'node:path';
 import type { TgExport, TgMessage, Chunk } from './types.ts';
-import { discoverPeople, applyTokens } from './anonymize.ts';
+import { discoverPeople, mergePass, qaPass, applyTokens } from './anonymize.ts';
 import { chunkChat } from './chunk.ts';
 import { warmup } from './ollama.ts';
 
@@ -50,10 +50,23 @@ await warmup(ollamaIp);
 // ── PASS 1: anonymise (shared map across all chats → consistent tokens everywhere) ─────────────────
 log('Pass 1 — anonymise');
 const people = await discoverPeople(ollamaIp, chats.map((c) => c.doc.messages ?? []), groups, windowN, log);
-for (const { file, doc } of chats) {
-  applyTokens(doc.messages ?? [], people);
-  writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
+// PASS 1.5 — fuzzy-string candidates, LLM-verified identity merge (catches spelling variants/declensions).
+log('Pass 1.5 — entity-merge verification (fuzzy + LLM)');
+await mergePass(ollamaIp, people, log);
+const applyToAll = () => { for (const { doc } of chats) applyTokens(doc.messages ?? [], people); };
+applyToAll();
+
+// PASS 1.9 — QA leak scan: re-read the tokenised text, catch anyone discovery MISSED, re-apply, repeat
+// until clean. This is what makes the output *verified* anonymised, not just *probably*.
+log('Pass 1.9 — QA leak scan');
+for (let round = 1; round <= 5; round++) {
+  const found = await qaPass(ollamaIp, chats.map((c) => c.doc.messages ?? []), people, groups, windowN, log);
+  if (found === 0) { log(`   QA round ${round}: ✓ clean — every name is a token`); break; }
+  log(`   QA round ${round}: caught ${found} missed name(s) → re-applying`);
+  applyToAll();
+  if (round === 5) log(`   QA hit the 5-round limit — re-run if the last round still found leaks`);
 }
+for (const { file, doc } of chats) writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
 writeFileSync(join(ANON_DIR, 'names-map.json'), JSON.stringify({ people }, null, 2), 'utf8'); // AUDIT file
 const perGroup = groups.map((g) => `${people.filter((p) => p.group === g).length} ${g}`).join(' + ');
 log(`  → ${perGroup} mapped → anonymized/\n`);
@@ -69,24 +82,62 @@ for (const { file, doc } of chats) {
   allChunks.push(...chunks);
 }
 
+// ── PASS 2.5 — ENTITY LINKING: build the mentionedAt back-references and emit PERSON chunks ─────────
+// INTENTION: PEOPLE ARE ROUTERS, NOT SEMANTIC CONTENT. Every proposition already lists its `actors`
+// (tokens). So DETERMINISTICALLY (no LLM) we collect, per person, the proposition chunk_ids they
+// appear in — that is `mentionedAt`. Then we emit one `person` chunk per person: matched by NAME/alias
+// (cheap lexical/trigram), it ROUTES into the sense-blobs. This is the entity-linking / graph-RAG layer
+// that lets "tell me everything about X" work as a two-hop lookup instead of a fuzzy semantic search.
+log('\nPass 2.5 — entity linking (mentionedAt + person chunks)');
+for (const p of people) p.mentionedAt = allChunks.filter((c) => c.actors.includes(p.token)).map((c) => c.chunk_id);
+writeFileSync(join(ANON_DIR, 'names-map.json'), JSON.stringify({ people }, null, 2), 'utf8'); // re-save with mentionedAt
+const personChunks: Chunk[] = people.map((p) => ({
+  chunk_type: 'person',
+  chunk_id: `person_${p.token}`,
+  document_id: '_people',
+  source_file: 'anonymized/names-map.json',
+  chunk_index: 0,
+  text: `${p.token} — a ${p.group}. Appears in ${p.mentionedAt!.length} discussion(s).`,
+  title: 'People',
+  domain, document_type: 'entity_card', language: 'uk-ru',
+  actors: [p.token],
+  message_ids: [],
+  timeframe: [],
+  group: p.group,
+  aliases: p.forms,
+  mentioned_at: p.mentionedAt,
+}));
+allChunks.push(...personChunks);
+log(`  → ${personChunks.length} person chunks (each routes to its sense-blobs via mentioned_at)`);
+
 // ── write outputs: chunks.jsonl (the deliverable) + chunks.md (human-readable, to scroll) ──────────
 writeFileSync(join(OUT_DIR, 'chunks.jsonl'), allChunks.map((c) => JSON.stringify(c)).join('\n') + '\n', 'utf8');
 writeFileSync(join(OUT_DIR, 'chunks.md'), renderMarkdown(allChunks), 'utf8');
-log(`\n✅ ${allChunks.length} chunks → output/chunks.jsonl + output/chunks.md`);
+const props = allChunks.filter((c) => c.chunk_type === 'proposition').length;
+log(`\n✅ ${props} proposition + ${personChunks.length} person chunks → output/chunks.jsonl + output/chunks.md`);
 
-/** Pretty, scrollable view of the chunks so the reviewer can eyeball the "blobs" comfortably. */
+/** Pretty, scrollable view of the chunks so the reviewer can eyeball both types comfortably. */
 function renderMarkdown(chunks: Chunk[]): string {
+  const props = chunks.filter((c) => c.chunk_type === 'proposition');
+  const persons = chunks.filter((c) => c.chunk_type === 'person');
   const byDoc = new Map<string, Chunk[]>();
-  for (const c of chunks) (byDoc.get(c.document_id) ?? byDoc.set(c.document_id, []).get(c.document_id)!).push(c);
-  let out = `# Extracted propositions (RAG chunks)\n\n${chunks.length} chunks from ${byDoc.size} chat(s). Each block is one self-contained "blob of sense".\n`;
+  for (const c of props) (byDoc.get(c.document_id) ?? byDoc.set(c.document_id, []).get(c.document_id)!).push(c);
+
+  let out = `# RAG chunks\n\n${props.length} **proposition** chunks (blobs of sense) + ${persons.length} **person** chunks (entity cards that route into them).\n`;
+
+  out += `\n## Proposition chunks — the knowledge\n`;
   for (const [id, cs] of byDoc) {
-    out += `\n---\n\n## ${cs[0].title}  \n\`document_id: ${id}\` · \`${cs[0].source_file}\`\n`;
+    out += `\n### ${cs[0].title}  \n\`document_id: ${id}\` · \`${cs[0].source_file}\`\n`;
     for (const c of cs) {
-      out += `\n### \`${c.chunk_id}\`\n> ${c.text}\n\n`;
-      out += `- **actors:** ${c.actors.join(', ') || '—'}\n`;
-      out += `- **timeframe:** ${c.timeframe.join(', ') || '—'}\n`;
-      out += `- **from messages:** ${c.message_ids.join(', ') || '—'}  ·  chunk_index ${c.chunk_index}\n`;
+      out += `\n**\`${c.chunk_id}\`** — ${c.text}\n`;
+      out += `<sub>actors: ${c.actors.join(', ') || '—'} · timeframe: ${c.timeframe.join(', ') || '—'} · msgs: ${c.message_ids.join(', ') || '—'}</sub>\n`;
     }
+  }
+
+  out += `\n---\n\n## Person chunks — the entity-linking layer\n\nEach person is matched by name/alias and **routes** into the proposition chunks that mention them (\`mentioned_at\`). Ask "tell me about patient2" → match here → follow the ids.\n`;
+  for (const p of persons) {
+    out += `\n**\`${p.chunk_id}\`** (${p.group}) — aliases: \`${(p.aliases ?? []).join('`, `')}\`\n`;
+    out += `<sub>mentioned_at → ${(p.mentioned_at ?? []).join(', ') || '(none)'}</sub>\n`;
   }
   return out;
 }

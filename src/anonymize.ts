@@ -56,17 +56,29 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
       const prompt = prompts.anonymizeDiscover({
         GROUPS: groups.join(', '), GROUP0: groups[0], PEOPLE: peopleView(), MESSAGES: JSON.stringify(msgs),
       });
-      let found: { people?: Array<{ canonical?: string; group?: string; forms?: string[] }> };
+      let found: { people?: Array<Record<string, unknown>> };
       try { found = await askJson(ollamaIp, prompt, schema); } catch { continue; }
 
-      for (const p of found.people ?? []) {
-        if (!p.canonical) continue;
-        if (!Array.isArray(p.forms) || p.forms.length === 0) p.forms = [p.canonical]; // never drop a person
+      for (const raw of found.people ?? []) {
+        const canonical = String(raw.canonical ?? raw.name ?? raw.full_name ?? '').trim();
+        if (!canonical) continue;
+        // Tolerant: gemma sometimes returns the spellings under a different key (full_name/names/…).
+        // Collect from every plausible key; if still empty, fall back to the canonical so a detected
+        // person is NEVER dropped (a dropped person = a leaked real name).
+        let forms: string[] = [];
+        for (const k of ['forms', 'names', 'aliases', 'spellings', 'full_name', 'name']) {
+          const v = raw[k];
+          if (Array.isArray(v)) forms.push(...v.map(String));
+          else if (typeof v === 'string' && k !== 'name' && k !== 'full_name') forms.push(v);
+        }
+        forms = [...new Set(forms.map((s) => s.trim()).filter(Boolean))];
+        if (forms.length === 0) forms = [canonical];
+        const group = groups.includes(String(raw.group)) ? String(raw.group) : groups[groups.length - 1];
+        const p = { canonical, group, forms };
         const formsN = p.forms.map(norm);
         // same person only if canonical matches or a spelling overlaps one we already know
         let e = people.find((x) => norm(x.canonical) === norm(p.canonical) || x.forms.some((f) => formsN.includes(norm(f))));
         if (!e) {
-          const group = groups.includes(p.group ?? '') ? p.group! : groups[groups.length - 1];
           e = { token: `${group}${++counters[group]}`, group, canonical: p.canonical, forms: [] };
           people.push(e);
           log(`   + ${group}: ${p.canonical} → ${e.token}`);
@@ -78,12 +90,114 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
   return people;
 }
 
-/** real→token pairs + name-part derivation (so a lone surname is caught), longest-first. */
+// ── PASS 1.5 — ENTITY-MERGE VERIFICATION (the 3rd LLM loop) ─────────────────────────────────────────
+// INTENTION: FUZZY STRING PROPOSES, LLM DISPOSES. We tried vector clustering here; the local embedder
+// couldn't separate names on domain-homogeneous chat (every person ≈ one point). The duplicates that are
+// ACTUALLY in this data are ORTHOGRAPHIC — spelling variants ("Пискуновська"/"Піскуновська", one letter)
+// and declensions ("Оксана"/"Оксані"). Those are exactly what edit-distance catches. So we nominate any
+// pair whose name-tokens are near-identical, then the strict LLM verify makes the final call (so a wife
+// is never merged into her husband — a shared surname alone never merges).
+const MERGE_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' }, reason: { type: 'string' } }, required: ['same', 'reason'] };
+const MAX_MERGE_CHECKS = 500;  // hard cap on LLM calls; if exceeded we log it (never a silent truncation)
+
+/** Levenshtein edit distance between two strings (how many single-char edits to turn one into the other). */
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+const tokensOf = (p: Person) => [...new Set([...p.forms, p.canonical].flatMap((f) => f.trim().split(/\s+/)).map(norm).filter((t) => t.length >= 4))];
+/** Two people are worth checking if any of their name-tokens are equal or a 1–2 char near-miss
+ *  (spelling variant / declension of the same surname or first name). */
+function fuzzyCandidate(a: Person, b: Person): boolean {
+  for (const x of tokensOf(a)) for (const y of tokensOf(b)) {
+    if (x === y) return true;
+    const min = Math.min(x.length, y.length);
+    if (min >= 4 && lev(x, y) <= 2 && lev(x, y) <= min * 0.34) return true;
+  }
+  return false;
+}
+
+export async function mergePass(ollamaIp: string, people: Person[], log: (s: string) => void): Promise<Person[]> {
+  let checks = 0, merges = 0, capped = false;
+  for (let i = 0; i < people.length; i++) {
+    for (let j = i + 1; j < people.length; j++) {
+      const a = people[i], b = people[j];
+      if (!fuzzyCandidate(a, b)) continue;                 // cheap string pre-filter → few LLM calls
+      if (checks >= MAX_MERGE_CHECKS) { capped = true; continue; }
+      checks++;
+      let r: { same?: boolean; reason?: string };
+      try {
+        r = await askJson(ollamaIp, prompts.mergeVerify({
+          A: JSON.stringify({ canonical: a.canonical, forms: a.forms }),
+          B: JSON.stringify({ canonical: b.canonical, forms: b.forms }),
+        }), MERGE_SCHEMA);
+      } catch { continue; }
+      if (r.same === true) {
+        a.forms = [...new Set([...a.forms, ...b.forms])];
+        log(`   ⇄ merged ${b.canonical} → ${a.token}  (${r.reason ?? 'same person'})`);
+        people.splice(j, 1); j--; merges++;
+      }
+    }
+  }
+  const counters: Record<string, number> = {};
+  for (const p of people) { counters[p.group] = (counters[p.group] ?? 0) + 1; p.token = `${p.group}${counters[p.group]}`; }
+  log(`   fuzzy-merge: ${checks} pair(s) verified, ${merges} merged → ${people.length} people${capped ? ` (⚠ capped at ${MAX_MERGE_CHECKS})` : ''}`);
+  return people;
+}
+
+// ── PASS 1.9 — QA LEAK SCAN ─────────────────────────────────────────────────────────────────────────
+// INTENTION: VERIFY, DON'T ASSUME. The mapped-name check is BLIND to a person we never discovered. So we
+// re-read the ALREADY-TOKENISED text and ask the model for any real name that is still NOT a token —
+// those are misses. They get added to the map (and the caller re-applies + re-scans until clean). Without
+// this a missed person's real name ships in the clear and nothing notices.
+const looksLikeToken = (s: string) => /^[a-z]+\d+$/i.test(s.trim());
+
+export async function qaPass(ollamaIp: string, chats: TgMessage[][], people: Person[], groups: string[], windowN: number, log: (s: string) => void): Promise<number> {
+  const leakGroup = groups[groups.length - 1]; // a missed person defaults to the last group (e.g. patient)
+  const counters: Record<string, number> = {};
+  for (const p of people) { const n = parseInt(p.token.replace(/^\D+/, ''), 10); counters[p.group] = Math.max(counters[p.group] ?? 0, Number.isNaN(n) ? 0 : n); }
+  let added = 0;
+  for (const messages of chats) {
+    for (let start = 0; start < messages.length; start += windowN) {
+      const msgs = messages.slice(start, start + windowN).map((m) => ({ id: m.id, text: flatten(m.text) })).filter((m) => m.text.trim());
+      if (msgs.length === 0) continue;
+      let r: { leaks?: Array<{ canonical?: string; forms?: string[] }> };
+      try { r = await askJson(ollamaIp, prompts.qaLeakScan({ MESSAGES: JSON.stringify(msgs) })); } catch { continue; }
+      for (const L of r.leaks ?? []) {
+        const canonical = String(L.canonical ?? '').trim();
+        if (!canonical || looksLikeToken(canonical)) continue;              // ignore tokens reported by mistake
+        const forms = [...new Set([...(Array.isArray(L.forms) ? L.forms.map(String) : []), canonical].map((s) => s.trim()).filter((s) => s && !looksLikeToken(s)))];
+        const formsN = forms.map(norm);
+        let e = people.find((x) => norm(x.canonical) === norm(canonical) || x.forms.some((f) => formsN.includes(norm(f))));
+        if (!e) {
+          e = { token: `${leakGroup}${++counters[leakGroup]}`, group: leakGroup, canonical, forms: [] };
+          people.push(e); added++;
+          log(`   ✗ QA leak caught: ${canonical} → ${e.token}`);
+        }
+        e.forms = [...new Set([...e.forms, ...forms])];
+      }
+    }
+  }
+  return added;
+}
+
+/** real→token pairs + name-part derivation (so a lone surname is caught), longest-first.
+ *  INTENTION: AMBIGUITY-SAFE — a bare name-part is only derived if it maps to EXACTLY ONE person. If a
+ *  surname/first-name is shared by two people (e.g. two "Головко"), we do NOT guess which token a lone
+ *  mention means; the full-name mentions still resolve. Prevents cross-person mis-assignment. */
 function buildPairs(people: Person[]): Array<{ real: string; token: string }> {
   const pairs = people.flatMap((p) => p.forms.map((f) => ({ real: f, token: p.token })));
   const seen = new Set(pairs.map((p) => norm(p.real)));
-  for (const p of [...pairs]) for (const part of p.real.trim().split(/\s+/))
-    if (part.length >= 3 && !seen.has(norm(part))) { pairs.push({ real: part, token: p.token }); seen.add(norm(part)); }
+  // count which token(s) each candidate part belongs to
+  const partTokens = new Map<string, Set<string>>();
+  for (const p of people) for (const f of p.forms) for (const part of f.trim().split(/\s+/))
+    if (part.length >= 3) (partTokens.get(norm(part)) ?? partTokens.set(norm(part), new Set()).get(norm(part))!).add(p.token);
+  for (const [part, tokens] of partTokens)
+    if (tokens.size === 1 && !seen.has(part)) { pairs.push({ real: part, token: [...tokens][0] }); seen.add(part); }
   return pairs.sort((a, b) => b.real.length - a.real.length);
 }
 

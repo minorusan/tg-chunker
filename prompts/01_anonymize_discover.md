@@ -18,12 +18,17 @@ The first group, "{{GROUP0}}", is the chat's own PARTICIPANTS (the people writin
 appears MENTIONED in the messages belongs to one of the other groups — decide which from the meaning of
 the group name and the context. (If there is only one group, everyone goes there.)
 
+People are often referred to by first name + PATRONYMIC with no surname (e.g. "Олена Анатоліївна",
+"Іван Петрович"). These ARE real private people — list them and include the patronymic spelling in
+`forms`. Judge gender from the patronymic ending too (-ович/-йович = male, -івна/-ївна/-овна = female).
+
 DO NOT list (they are not private people to be tokenised): public figures, brands, companies, cities,
 and obvious placeholder / example names such as "Vasya Pupkin".
 
-ONE REAL PERSON = ONE ENTRY, but NEVER merge two DIFFERENT people. For each person list in `forms` every
-exact spelling of THAT ONE INDIVIDUAL (full name, first name alone, surname alone, and every declined or
-diminutive form). Give a `canonical` (fullest real name) and REUSE a canonical from CURRENT PEOPLE only
+ONE REAL PERSON = ONE ENTRY, but NEVER merge two DIFFERENT people. For each person, in `forms` list each
+DISTINCT spelling that appears in the text ONCE — never repeat a spelling. Include the different forms
+you see (full name, first name, surname, declined/diminutive), but keep the list short and unique: a few
+entries, not dozens. Give a `canonical` (fullest real name); REUSE a canonical from CURRENT PEOPLE only
 when it is unmistakably the same individual.
 
 STRICT IDENTITY RULES — do not violate these:
