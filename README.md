@@ -345,11 +345,13 @@ and answer a natural-language question by returning the top-k closest chunks. Sa
 | embeddings core | [`src/embed.ts`](./src/embed.ts) | `embedDocuments` / `embedQuery` (local `nomic-embed-text`), `cosine`, brute-force `topK` |
 | build the index | [`scripts/build-index.ts`](./scripts/build-index.ts) | embeds every chunk in `data/processed/chunks.jsonl` → saves `index/index.json` |
 | search | [`scripts/retrieve.ts`](./scripts/retrieve.ts) | embeds a query, cosine-scores it against all vectors, prints top-k with metadata |
+| web UI daemon | [`scripts/serve.ts`](./scripts/serve.ts) | zero-dependency `node:http` server on :3434 — search bar + button + top-k results |
 | the examples | [`scripts/run-examples.ts`](./scripts/run-examples.ts) | runs 8 test queries → [`outputs/retrieval_examples.md`](./outputs/retrieval_examples.md) |
 
 ```bash
-npm run build-index                                  # → index/index.json (18 vectors, dim 768)
+npm run bake                                         # → index/index.json (18 vectors, dim 768)
 npm run retrieve -- "скільки коштує гігієна на брекетах?"   # → top-3 with score + source
+npm run serve                                        # → search UI at http://localhost:3434
 npm run examples                                     # → outputs/retrieval_examples.md
 ```
 
