@@ -36,41 +36,51 @@ function contextOf(hits: Array<Record<string, any>>): string {
 const PAGE = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tg-chunker — RAG search</title>
+<title>Клініка — довідковий пошук</title>
 <style>
-  body { font: 15px/1.5 system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; background:#111; color:#ddd; }
-  h1 { font-size: 1.15rem; color:#fff; }
+  :root { --teal:#0e7490; --teal-soft:#e0f2f7; --ink:#1e3a45; --line:#d7e3e8; --muted:#64818c; --card:#fff; }
+  body { font: 15px/1.6 "Segoe UI", system-ui, sans-serif; max-width: 880px; margin: 0 auto; padding: 0 1rem 3rem; background:#f4f8fa; color:var(--ink); }
+  header { display:flex; align-items:center; gap:.7rem; padding:1.2rem 0 1rem; border-bottom:3px solid var(--teal); margin-bottom:1.2rem; }
+  .cross { width:34px; height:34px; border-radius:9px; background:var(--teal); color:#fff; display:grid; place-items:center; font-size:1.3rem; font-weight:700; }
+  h1 { font-size:1.2rem; margin:0; font-weight:600; }
+  h1 small { display:block; font-size:.75rem; font-weight:400; color:var(--muted); }
   form { display: flex; gap: .5rem; margin: 1rem 0; }
-  input[type=text] { flex: 1; padding: .6rem .8rem; font-size: 1rem; border-radius: 8px; border: 1px solid #444; background:#1c1c1c; color:#eee; }
-  select { padding: .6rem .4rem; border-radius: 8px; border: 1px solid #444; background:#1c1c1c; color:#eee; }
-  button { padding: .6rem 1.1rem; font-size: 1rem; border-radius: 8px; border: 0; cursor: pointer; }
-  #bSearch { background:#3b6ef5; color:#fff; }
-  #bAsk { background:#2f8f4e; color:#fff; }
-  .answer { border:1px solid #2f8f4e; border-radius:10px; padding:.9rem 1.1rem; margin:.8rem 0; background:#12211a; color:#d9f2e2; font-size:1.05rem; }
-  .answer .who { font-size:.75rem; color:#7bd88f; font-family:monospace; margin-bottom:.3rem; }
-  details { margin:.6rem 0; }
-  summary { cursor:pointer; color:#8ab4ff; font-size:.85rem; font-family:monospace; }
-  pre.prompt { white-space:pre-wrap; font:12px/1.5 monospace; background:#181818; border:1px solid #333; border-radius:8px; padding: .8rem; color:#bbb; max-height:420px; overflow:auto; }
-  .hit { border: 1px solid #333; border-radius: 10px; padding: .7rem 1rem .6rem; margin: .7rem 0; background:#191919; }
-  .hit.person { border-color:#5a4a20; background:#1d1a12; }
-  .head { display:flex; justify-content:space-between; align-items:baseline; gap:.6rem; font-size:.85rem; font-family:monospace; }
-  .rank { color:#8ab4ff; }
-  .type { color:#c99a3c; }
-  .score { color:#7bd88f; font-weight:bold; }
-  .gap { color:#e06c60; font-size:.78rem; }
-  .bar { height: 4px; border-radius: 2px; background:#2a2a2a; margin:.4rem 0 .5rem; overflow:hidden; }
-  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#2f6b3f,#7bd88f); }
-  .text { margin:.2rem 0 .5rem; color:#eee; }
-  .meta { display:flex; flex-wrap:wrap; gap:.35rem .5rem; font-size:.76rem; font-family:monospace; }
-  .tag { background:#242424; border:1px solid #383838; border-radius:5px; padding:.1rem .45rem; color:#aaa; }
-  .tag b { color:#ccc; font-weight:600; }
-  .tag.actor { color:#8ab4ff; border-color:#31435f; }
-  .tag.time { color:#c99a3c; border-color:#4d3d1e; }
-  .tag.route { color:#b48ef0; border-color:#43315f; }
-  .empty { color:#888; }
-  .qinfo { font-size:.8rem; color:#888; font-family:monospace; margin:.4rem 0; }
+  input[type=text] { flex: 1; padding: .65rem .9rem; font-size: 1rem; border-radius: 10px; border: 1.5px solid var(--line); background:#fff; color:var(--ink); }
+  input[type=text]:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-soft); }
+  select { padding: .65rem .5rem; border-radius: 10px; border: 1.5px solid var(--line); background:#fff; color:var(--ink); }
+  button { padding: .65rem 1.3rem; font-size: 1rem; border-radius: 10px; border: 0; cursor: pointer; font-weight:600; }
+  #bSearch { background:#fff; color:var(--teal); border:1.5px solid var(--teal); }
+  #bSearch:hover { background:var(--teal-soft); }
+  #bAsk { background:var(--teal); color:#fff; }
+  #bAsk:hover { background:#0a5c73; }
+  .answer { border-left:4px solid var(--teal); border-radius:10px; padding:1rem 1.2rem; margin:1rem 0; background:var(--card); box-shadow:0 1px 4px rgba(30,58,69,.08); font-size:1.05rem; }
+  .answer .who { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.35rem; }
+  details { margin:.7rem 0; }
+  summary { cursor:pointer; color:var(--teal); font-size:.85rem; }
+  pre.prompt { white-space:pre-wrap; font:12px/1.5 ui-monospace, monospace; background:#fbfdfe; border:1px solid var(--line); border-radius:10px; padding:.9rem; color:#41626e; max-height:420px; overflow:auto; }
+  .hit { border:1px solid var(--line); border-radius:12px; padding:.75rem 1rem .65rem; margin:.7rem 0; background:var(--card); box-shadow:0 1px 3px rgba(30,58,69,.05); }
+  .hit.person { border-left:4px solid #c9a227; }
+  .head { display:flex; justify-content:space-between; align-items:baseline; gap:.6rem; font-size:.82rem; font-family:ui-monospace, monospace; }
+  .rank { color:var(--teal); font-weight:700; }
+  .type { color:#c9a227; }
+  .score { color:#15803d; font-weight:bold; }
+  .gap { color:#b91c1c; font-size:.76rem; }
+  .bar { height:5px; border-radius:3px; background:var(--teal-soft); margin:.4rem 0 .5rem; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#67b7c9,var(--teal)); }
+  .text { margin:.2rem 0 .5rem; }
+  .meta { display:flex; flex-wrap:wrap; gap:.35rem .5rem; font-size:.74rem; font-family:ui-monospace, monospace; }
+  .tag { background:#f0f6f8; border:1px solid var(--line); border-radius:6px; padding:.12rem .5rem; color:var(--muted); }
+  .tag b { color:var(--ink); font-weight:600; }
+  .tag.actor { color:#1d4ed8; border-color:#c7d7f5; background:#eef3fd; }
+  .tag.time { color:#92600a; border-color:#ecd9ae; background:#fdf6e7; }
+  .tag.route { color:#6d28d9; border-color:#ddd1f5; background:#f5f0fd; }
+  .empty { color:var(--muted); }
+  .qinfo { font-size:.8rem; color:var(--muted); font-family:ui-monospace, monospace; margin:.5rem 0; }
 </style>
-<h1>tg-chunker — RAG search <span style="color:#666;font-weight:400">(retrieve · inject · answer)</span></h1>
+<header>
+  <div class=cross>+</div>
+  <h1>Довідковий пошук клініки<small>internal knowledge base · semantic retrieval · gemma4:26b (local)</small></h1>
+</header>
 <form id=f>
   <input type=text id=q placeholder="e.g. скільки коштує гігієна на брекетах?" autofocus>
   <select id=k><option value=3>top 3</option><option value=5 selected>top 5</option><option value=10>top 10</option><option value=18>all 18</option></select>
@@ -118,7 +128,7 @@ const PAGE = `<!doctype html>
       out.innerHTML = '<div class=qinfo>query: “'+esc(q.value)+'” · '+d.length+' results · top '+max.toFixed(3)+' · spread '+(max-min).toFixed(3)+'</div>' + renderHits(d);
     } else {
       out.innerHTML =
-        '<div class=answer><div class=who>gemma4:26b · адміністратор клініки · single-shot (без сесії)</div>'+esc(d.answer)+'</div>'
+        '<div class=answer><div class=who>Відповідь адміністратора · gemma4:26b · single-shot</div>'+esc(d.answer)+'</div>'
         + '<details><summary>▸ resulting prompt (what was actually sent to the model)</summary><pre class=prompt>'+esc(d.prompt)+'</pre></details>'
         + '<div class=qinfo>injected chunks ('+d.hits.length+'):</div>'
         + renderHits(d.hits);
