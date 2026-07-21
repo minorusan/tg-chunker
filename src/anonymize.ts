@@ -40,17 +40,33 @@ const discoverSchema = (groups: string[]) => ({
 });
 
 /** Discover people across ALL chats into one shared map (so a person is the same tokenN everywhere).
- *  Chat participants (senders) are seeded into the FIRST group; the model classifies the rest. */
-export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], groups: string[], windowN: number, log: (s: string) => void): Promise<Person[]> {
-  const roster = [...new Set(chats.flat().flatMap((m) => [m.from, m.actor].filter((x): x is string => !!x && x.trim() !== '')))];
+ *  Chat participants (senders) are seeded into the FIRST group; the model classifies the rest.
+ *  RESUMABLE: pass `resume` to continue from a saved (unit, window, people); `onWindow` is called after
+ *  each window so the caller can persist a checkpoint. Reprocessing a window is safe — discovery just
+ *  re-finds the same people and dedups them, so a resumed in-flight window can't double-count. */
+export async function discoverPeople(
+  ollamaIp: string, chats: TgMessage[][], groups: string[], windowN: number, log: (s: string) => void,
+  resume?: { startUnit: number; startWin: number; people: Person[] },
+  onWindow?: (unit: number, nextStart: number, people: Person[]) => void,
+): Promise<Person[]> {
   const counters: Record<string, number> = Object.fromEntries(groups.map((g) => [g, 0]));
-  const people: Person[] = roster.map((name) => ({ token: `${groups[0]}${++counters[groups[0]]}`, group: groups[0], canonical: name, forms: [name] }));
+  let people: Person[];
+  if (resume) {   // continue an interrupted run: reuse the map, rebuild counters from its highest tokens
+    people = resume.people;
+    for (const p of people) { const n = parseInt(p.token.replace(/^\D+/, ''), 10); if (!Number.isNaN(n)) counters[p.group] = Math.max(counters[p.group] ?? 0, n); }
+  } else {        // fresh run: seed chat participants into the first group
+    const roster = [...new Set(chats.flat().flatMap((m) => [m.from, m.actor].filter((x): x is string => !!x && x.trim() !== '')))];
+    people = roster.map((name) => ({ token: `${groups[0]}${++counters[groups[0]]}`, group: groups[0], canonical: name, forms: [name] }));
+  }
   const schema = discoverSchema(groups);
+  const startUnit = resume?.startUnit ?? 0;
+  const startWin = resume?.startWin ?? 0;
 
   const peopleView = () => people.length ? people.map((p) => `${p.token} = ${p.canonical} (${p.forms.join(', ')})`).join('\n') : '(none yet)';
 
-  for (const messages of chats) {
-    for (let start = 0; start < messages.length; start += windowN) {
+  for (let ci = startUnit; ci < chats.length; ci++) {
+    const messages = chats[ci];
+    for (let start = (ci === startUnit ? startWin : 0); start < messages.length; start += windowN) {
       const window = messages.slice(start, start + windowN);
       const msgs = window.map((m) => ({ id: m.id, from: m.from ?? null, text: flatten(m.text) }));
       const prompt = prompts.anonymizeDiscover({
@@ -85,6 +101,7 @@ export async function discoverPeople(ollamaIp: string, chats: TgMessage[][], gro
         }
         e.forms = [...new Set([...e.forms, ...p.forms])];
       }
+      onWindow?.(ci, start + windowN, people);   // checkpoint: next window to process
     }
   }
   return people;
@@ -156,13 +173,20 @@ export async function mergePass(ollamaIp: string, people: Person[], log: (s: str
 // this a missed person's real name ships in the clear and nothing notices.
 const looksLikeToken = (s: string) => /^[a-z]+\d+$/i.test(s.trim());
 
-export async function qaPass(ollamaIp: string, chats: TgMessage[][], people: Person[], groups: string[], windowN: number, log: (s: string) => void): Promise<number> {
+export async function qaPass(
+  ollamaIp: string, chats: TgMessage[][], people: Person[], groups: string[], windowN: number, log: (s: string) => void,
+  resume?: { startUnit: number; startWin: number },
+  onWindow?: (unit: number, nextStart: number) => void,
+): Promise<number> {
   const leakGroup = groups[groups.length - 1]; // a missed person defaults to the last group (e.g. patient)
   const counters: Record<string, number> = {};
   for (const p of people) { const n = parseInt(p.token.replace(/^\D+/, ''), 10); counters[p.group] = Math.max(counters[p.group] ?? 0, Number.isNaN(n) ? 0 : n); }
+  const startUnit = resume?.startUnit ?? 0;
+  const startWin = resume?.startWin ?? 0;
   let added = 0;
-  for (const messages of chats) {
-    for (let start = 0; start < messages.length; start += windowN) {
+  for (let ci = startUnit; ci < chats.length; ci++) {
+    const messages = chats[ci];
+    for (let start = (ci === startUnit ? startWin : 0); start < messages.length; start += windowN) {
       const msgs = messages.slice(start, start + windowN).map((m) => ({ id: m.id, text: flatten(m.text) })).filter((m) => m.text.trim());
       if (msgs.length === 0) continue;
       let r: { leaks?: Array<{ canonical?: string; forms?: string[] }> };
@@ -180,6 +204,7 @@ export async function qaPass(ollamaIp: string, chats: TgMessage[][], people: Per
         }
         e.forms = [...new Set([...e.forms, ...forms])];
       }
+      onWindow?.(ci, start + windowN);   // checkpoint: next window in this round
     }
   }
   return added;
