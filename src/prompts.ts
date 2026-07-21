@@ -22,10 +22,12 @@ const ANON = load('01_anonymize_discover.md');
 const CHUNK = load('02_chunk_propositions.md');
 const MERGE = load('03_merge_verify.md');
 const QA = load('04_qa_leakscan.md');
+const RAG = load('05_rag_answer.md');
 
 export const prompts = {
   anonymizeDiscover: (vars: { GROUPS: string; GROUP0: string; PEOPLE: string; MESSAGES: string }) => fill(ANON, vars),
   chunkPropositions: (vars: { WINDOW_START: string; WINDOW_END: string; MESSAGES: string }) => fill(CHUNK, vars),
   mergeVerify: (vars: { A: string; B: string }) => fill(MERGE, vars),
   qaLeakScan: (vars: { MESSAGES: string }) => fill(QA, vars),
+  ragAnswer: (vars: { CONTEXT: string; QUESTION: string }) => fill(RAG, vars),
 };

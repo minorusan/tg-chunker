@@ -56,6 +56,28 @@ function parseLoose<T>(raw: string): T {
   try { return JSON.parse(t) as T; } catch { return {} as T; }
 }
 
+/** Ask the local model for a PLAIN-TEXT answer (the RAG generation step). Single-shot — one user
+ *  message, no chat history/session; every request stands alone with its injected context.
+ *  Same lessons as askJson: /api/chat for the template, think:false, token cap. temperature 0.2 —
+ *  a touch of naturalness for a human-facing reply while staying close to the facts. */
+export async function askText(ollamaIp: string, prompt: string): Promise<string> {
+  const res = await fetch(`http://${ollamaIp}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+      think: false,
+      options: { temperature: 0.2, num_predict: 1024 },
+    }),
+    signal: AbortSignal.timeout(300_000),
+  });
+  if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
+  const body = (await res.json()) as { message?: { content?: string } };
+  return (body.message?.content ?? '').trim();
+}
+
 /** Load the model into VRAM up front so the first real call isn't slow (nice for the live demo). */
 export async function warmup(ollamaIp: string): Promise<void> {
   try { await askJson(ollamaIp, 'Return {"ok":true}'); } catch { /* non-fatal */ }
