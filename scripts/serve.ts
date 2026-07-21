@@ -76,6 +76,12 @@ const PAGE = `<!doctype html>
   .tag.route { color:#6d28d9; border-color:#ddd1f5; background:#f5f0fd; }
   .empty { color:var(--muted); }
   .qinfo { font-size:.8rem; color:var(--muted); font-family:ui-monospace, monospace; margin:.5rem 0; }
+  button:disabled { opacity:.55; cursor:progress; }
+  .spin { display:inline-block; width:14px; height:14px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:r .8s linear infinite; vertical-align:-2px; margin-right:.45rem; }
+  #bSearch .spin { border-color:var(--teal); border-top-color:transparent; }
+  @keyframes r { to { transform:rotate(360deg); } }
+  .waiting { display:flex; align-items:center; gap:.7rem; border:1px dashed var(--line); border-radius:12px; padding:1rem 1.2rem; margin:1rem 0; background:var(--card); color:var(--muted); }
+  .waiting .spin { border-color:var(--teal); border-top-color:transparent; width:18px; height:18px; }
 </style>
 <header>
   <div class=cross>+</div>
@@ -116,12 +122,34 @@ const PAGE = `<!doctype html>
     }).join('');
   }
 
+  const bSearch=document.getElementById('bSearch');
+  let timer=null;
+  function busy(mode, on) {
+    bSearch.disabled = bAsk.disabled = on;
+    clearInterval(timer);
+    if (on) {
+      const label = mode==='ask' ? 'Питаю gemma' : 'Шукаю';
+      const btn = mode==='ask' ? bAsk : bSearch;
+      btn.innerHTML = '<span class=spin></span>'+label;
+      const t0 = Date.now();
+      out.className=''; out.innerHTML = '<div class=waiting><span class=spin></span><span id=wmsg>'
+        + (mode==='ask' ? 'Шукаю чанки та питаю gemma… локальна модель, зазвичай 20–60 с' : 'Шукаю…')
+        + ' <b id=el>0</b> с</span></div>';
+      timer = setInterval(()=>{ const el=document.getElementById('el'); if(el) el.textContent=Math.round((Date.now()-t0)/1000); }, 1000);
+    } else {
+      bSearch.textContent='Search'; bAsk.textContent='Ask';
+    }
+  }
   async function go(mode) {
-    if (!q.value.trim()) return;
-    out.className='empty'; out.textContent = mode==='ask' ? 'Retrieving + asking gemma… (перша відповідь може зайняти ~хвилину)' : 'Searching…';
-    const r = await fetch('/api/'+mode+'?q='+encodeURIComponent(q.value)+'&k='+kSel.value);
-    if (!r.ok) { out.textContent = 'Error: '+await r.text(); return; }
-    const d = await r.json();
+    if (!q.value.trim()) { q.focus(); return; }
+    busy(mode, true);
+    let r, d;
+    try {
+      r = await fetch('/api/'+mode+'?q='+encodeURIComponent(q.value)+'&k='+kSel.value);
+      if (!r.ok) { out.className='empty'; out.textContent = 'Error: '+await r.text(); return; }
+      d = await r.json();
+    } catch (e) { out.className='empty'; out.textContent = 'Error: '+e; return; }
+    finally { busy(mode, false); }
     out.className='';
     if (mode==='search') {
       const max=d.length?d[0].score:0, min=d.length?d[d.length-1].score:0;
