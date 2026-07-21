@@ -18,12 +18,14 @@ const index = JSON.parse(readFileSync(join(ROOT, 'index/index.json'), 'utf8')) a
 const chunks = new Map<string, Record<string, unknown>>();
 for (const l of readFileSync(join(ROOT, 'data/processed/chunks.jsonl'), 'utf8').trim().split('\n')) { const c = JSON.parse(l); chunks.set(c.chunk_id, c); }
 
-/** Run one query → the k best chunks with score + metadata. Exposed so the examples runner reuses it. */
+/** Run one query → the k best chunks with score + the FULL chunk metadata (actors, timeframe,
+ *  message_ids, aliases, mentioned_at, …), so a bad ranking can be diagnosed, not just observed.
+ *  Exposed so the examples runner and the web daemon reuse it. */
 export async function retrieve(q: string, k: number, ip: string) {
   const qv = await embedQuery(ip, q);
   return topK(qv, index.items.map((it) => it.vector), k).map((hit) => {
     const c = chunks.get(index.items[hit.index].chunk_id) as any;
-    return { chunk_id: c.chunk_id, score: hit.score, text: String(c.text), source_file: c.source_file, document_id: c.document_id, chunk_type: c.chunk_type };
+    return { score: hit.score, ...c, text: String(c.text) };
   });
 }
 
