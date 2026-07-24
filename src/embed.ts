@@ -7,8 +7,12 @@
 // nomic is ASYMMETRIC: documents and queries are embedded with different prefixes so a short question
 // lands near the long passage that answers it. We honour that — it materially improves the ranking.
 
+import { labGate } from './guest.ts';
+
 const EMBED_MODEL = 'nomic-embed-text';
 
+// Legacy raw path: pre-prefix ourselves (standalone / Maradel down). On the gateway path the server
+// applies nomic's asymmetric prefix by `task`, so we must NOT prefix again (would double it).
 async function embedRaw(ollamaIp: string, inputs: string[]): Promise<number[][]> {
   const res = await fetch(`http://${ollamaIp}/api/embed`, {
     method: 'POST',
@@ -22,13 +26,19 @@ async function embedRaw(ollamaIp: string, inputs: string[]): Promise<number[][]>
   return body.embeddings;
 }
 
-/** Embed CHUNKS (the passages we store). Prefixed as documents. */
-export const embedDocuments = (ollamaIp: string, texts: string[]) =>
-  embedRaw(ollamaIp, texts.map((t) => `search_document: ${t}`));
+/** Embed CHUNKS (the passages we store), as documents. */
+export const embedDocuments = (ollamaIp: string, texts: string[]) => {
+  const gate = labGate();
+  if (gate) return gate.embed(texts, 'document'); // gateway applies "search_document:" server-side
+  return embedRaw(ollamaIp, texts.map((t) => `search_document: ${t}`));
+};
 
-/** Embed a QUERY (the user's question). Prefixed as a query so it lands near the answering document. */
-export const embedQuery = async (ollamaIp: string, text: string) =>
-  (await embedRaw(ollamaIp, [`search_query: ${text}`]))[0];
+/** Embed a QUERY (the user's question), so it lands near the answering document. */
+export const embedQuery = async (ollamaIp: string, text: string) => {
+  const gate = labGate();
+  if (gate) return (await gate.embed([text], 'query'))[0]; // gateway applies "search_query:" server-side
+  return (await embedRaw(ollamaIp, [`search_query: ${text}`]))[0];
+};
 
 /** Cosine similarity: how aligned two vectors are, 0..1 for embeddings (higher = more similar). */
 export function cosine(a: number[], b: number[]): number {

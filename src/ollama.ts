@@ -2,7 +2,14 @@
 // For the homework we shut Maradel down and point this at raw Ollama (`--ollamaIp`), so the whole
 // pipeline is provably "in-house LLM, no cloud, no internet" — which is the entire point of the bet.
 
+import { labGate } from './guest.ts';
+
 const MODEL = 'gemma4:26b';
+
+// Optional guest gate (see src/guest.ts): when set, EVERY LLM call first waits for a guest grant on
+// maradel's llm resource — tg-chunker only speaks when nobody with real priority holds the GPU.
+let llmGate: (() => Promise<void>) | null = null;
+export function setLlmGate(gate: () => Promise<void>): void { llmGate = gate; }
 
 /**
  * Ask the local model and get back parsed JSON.
@@ -14,6 +21,12 @@ const MODEL = 'gemma4:26b';
  * The `schema` arg is accepted but unused (kept so call sites can document their intended shape).
  */
 export async function askJson<T>(ollamaIp: string, prompt: string, _schema?: object): Promise<T> {
+  // In the lab, LLM_GATEWAY is set → go through Maradel's gateway as guest (the one door). The gate
+  // handles acquire/wait/release, so the legacy llmGate is redundant on this path.
+  const gate = labGate();
+  if (gate) return parseLoose<T>(await gate.generate(prompt, { temperature: 0 }));
+
+  if (llmGate) await llmGate();   // legacy standalone path: guest-wait, then raw Ollama below
   // IMPORTANT: use /api/chat (not /api/generate). gemma is an instruct model; the chat endpoint applies
   // its chat template so it follows instructions properly. Raw /api/generate skips the template and the
   // model degenerates (repeats a token forever). This one detail is the difference between garbage and
@@ -61,6 +74,10 @@ function parseLoose<T>(raw: string): T {
  *  Same lessons as askJson: /api/chat for the template, think:false, token cap. temperature 0.2 —
  *  a touch of naturalness for a human-facing reply while staying close to the facts. */
 export async function askText(ollamaIp: string, prompt: string): Promise<string> {
+  const gate = labGate();
+  if (gate) return (await gate.generate(prompt, { temperature: 0.2 })).trim();
+
+  if (llmGate) await llmGate();   // legacy standalone path: guest-wait, then raw Ollama below
   const res = await fetch(`http://${ollamaIp}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
