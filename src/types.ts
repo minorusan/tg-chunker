@@ -27,11 +27,39 @@ export interface TgExport {
 /** One real person in the anonymisation map. `forms` = every spelling seen; `token` = the stable
  *  replacement built from the caller's group (employee1 / patient3 / goodie2 / …). `group` is one of
  *  the caller-supplied --groupingTags. Written to names-map.json (the audit file). */
+/** Where an alias was actually SEEN — the evidence that it is real, and the pointer to fix it if wrong.
+ *  messageId null = the alias came from a sender field / seeding, not a message body.
+ *  `gender` is stamped by the audit pass (the model must state it per alias) — explicit, so a female
+ *  form sitting inside a male person's list is visible at a glance. */
+export interface FormOrigin {
+  doc: string;              // which chat file (basename)
+  messageId: number | null; // the message the alias first appeared in
+  context?: string;         // INLINE snippet of that message, captured at witness time — survives
+                            // merges/re-homes, grounds the audit, and lets a human QA the map directly
+  gender?: string;          // male | female | unknown — stamped by the audit pass
+}
+
+/** Verdict of the alias-audit loop for one REJECTED alias. Kept on the person so every removal is
+ *  explainable — the reason is MANDATORY (a discard without a reason is ignored as hallucination). */
+export interface DiscardedForm {
+  form: string;
+  reason: string;           // why the model rejected it (gender clash, different first name, chat title…)
+  suggested_full_name?: string;  // who the model thinks this alias ACTUALLY belongs to
+  gender?: string;
+  rehomed_to?: string;      // token of the person this alias was RE-ATTACHED to (so it never leaks)
+}
+
 export interface Person {
   token: string;
   group: string;            // one of --groupingTags (e.g. "employee", "patient", "goodie"…)
   canonical: string;
   forms: string[];
+  // INTENTION: EVERY ALIAS CARRIES ITS EVIDENCE. Per-form provenance (doc + messageId of first sighting)
+  // makes a wrong merge findable and fixable — and lets the audit pass show the model the REAL context
+  // an alias came from instead of asking it to reason in a vacuum.
+  provenance?: Record<string, FormOrigin>;
+  // Results of the alias-audit loop: what was thrown out of this person's alias list, and WHY.
+  discarded?: DiscardedForm[];
   // INTENTION: ENTITY LINKING — after Pass 2, every proposition-chunk this person appears in is
   // recorded here, so a person becomes a ROUTER into the sense-blobs ("show me everything about X").
   mentionedAt?: string[];   // chunk_ids of proposition chunks that reference this person

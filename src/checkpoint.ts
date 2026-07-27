@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync, unlinkSync, statSy
 import { join } from 'node:path';
 import type { Person, Chunk } from './types.ts';
 
-export type Phase = 'discover' | 'merge' | 'qa' | 'chunk' | 'done';
+export type Phase = 'discover' | 'merge' | 'audit' | 'qa' | 'chunk' | 'done';
 
 /** The entire resumable state of a run. Small except `chunks`, which grows during the chunk phase. */
 export interface Checkpoint {

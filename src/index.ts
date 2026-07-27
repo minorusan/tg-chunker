@@ -10,8 +10,10 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, basename, resolve } from 'node:path';
 import type { TgExport, TgMessage, Chunk } from './types.ts';
 import { discoverPeople, mergePass, qaPass, applyTokens } from './anonymize.ts';
+import { auditPass, buildMessageIndex } from './audit.ts';
 import { chunkChat } from './chunk.ts';
-import { warmup } from './ollama.ts';
+import { warmup, setLlmGate } from './ollama.ts';
+import { GuestGate } from './guest.ts';
 import { inputSig, loadCheckpoint, saveCheckpoint, clearCheckpoint } from './checkpoint.ts';
 import type { Checkpoint } from './checkpoint.ts';
 
@@ -25,7 +27,11 @@ const windowN = parseInt(arg('window', '12')!, 10);   // N — bounded by how mu
 // (goodies,baddies / staff,client,vendor / …). The FIRST group is the chat's own participants.
 const groups = (arg('groupingTags', 'employee,patient')!).split(',').map((g) => g.trim()).filter(Boolean);
 const domain = arg('domain', 'chat')!;                // free-form metadata tag for the KB
-if (!sourceDir) { console.error('usage: node src/index.ts --sourceDir <dir> --ollamaIp <host:port> [--groupingTags employee,patient] [--domain chat] [--window N] [--no-chunk] [--fresh]'); process.exit(1); }
+// --llmAuthority http://host:9100 → run as the lowest-priority GUEST of maradel's llm resource:
+// every LLM call waits for a guest grant and yields whenever a real authority (maradel/ayin/podcast)
+// is active. Omit on boxes without the daemon — calls then go straight to Ollama, ungated.
+const llmAuthority = arg('llmAuthority');
+if (!sourceDir) { console.error('usage: node src/index.ts --sourceDir <dir> --ollamaIp <host:port> [--groupingTags employee,patient] [--domain chat] [--window N] [--no-chunk] [--fresh] [--llmAuthority http://host:9100]'); process.exit(1); }
 if (groups.length === 0) { console.error('--groupingTags needs at least one group'); process.exit(1); }
 
 const HERE = resolve(join(sourceDir, '..'));           // e.g. data/ when sourceDir is data/raw
@@ -47,6 +53,8 @@ const chats = files.map((file) => ({ file, doc: JSON.parse(readFileSync(file, 'u
 log(`tg-chunker — local model @ ${ollamaIp} (offline)`);
 log(`  ${files.length} chat(s), ${chats.reduce((n, c) => n + (c.doc.messages?.length ?? 0), 0)} messages, window N=${windowN}`);
 log(`  groups: ${groups.join(', ')}  (first = chat participants)\n`);
+const guest = llmAuthority ? new GuestGate(llmAuthority, log) : null;
+if (guest) { log(`  llm authority: GUEST of ${llmAuthority} (lowest priority — yields to maradel/ayin/podcast)\n`); setLlmGate(() => guest.ensure()); }
 await warmup(ollamaIp);
 
 // ── STATE SAVE/RESTORE: resume an interrupted run, or start fresh ──────────────────────────────────
@@ -61,6 +69,7 @@ if (ckpt.phase !== 'discover' || ckpt.people.length) log(`↻ resuming — phase
 const save = () => saveCheckpoint(HERE, ckpt);
 
 const chatMsgs = chats.map((c) => c.doc.messages ?? []);                       // stable refs (mutated in place by applyTokens)
+const chatLabels = chats.map((c) => basename(c.file));                         // provenance doc labels
 const applyToAll = () => { for (const m of chatMsgs) applyTokens(m, ckpt.people); };
 const writeAnon = () => {
   for (const { file, doc } of chats) writeFileSync(join(ANON_DIR, basename(file)), JSON.stringify(doc, null, 2), 'utf8');
@@ -72,7 +81,7 @@ if (ckpt.phase === 'discover') {
   log('Pass 1 — anonymise');
   const resume = (ckpt.people.length || ckpt.unit || ckpt.start)
     ? { startUnit: ckpt.unit, startWin: ckpt.start, people: ckpt.people } : undefined;
-  ckpt.people = await discoverPeople(ollamaIp, chatMsgs, groups, windowN, log, resume,
+  ckpt.people = await discoverPeople(ollamaIp, chatMsgs, chatLabels, groups, windowN, log, resume,
     (unit, nextStart, people) => { ckpt.unit = unit; ckpt.start = nextStart; ckpt.people = people; save(); });
   ckpt.phase = 'merge'; ckpt.unit = 0; ckpt.start = 0; save();
 }
@@ -89,7 +98,7 @@ if (ckpt.phase === 'qa') {
   applyToAll();                                    // reproduce tokenised text from raw + current map
   log('Pass 1.9 — QA leak scan');
   for (; ckpt.qaRound <= 5; ckpt.qaRound++) {
-    const added = await qaPass(ollamaIp, chatMsgs, ckpt.people, groups, windowN, log,
+    const added = await qaPass(ollamaIp, chatMsgs, chatLabels, ckpt.people, groups, windowN, log,
       { startUnit: ckpt.unit, startWin: ckpt.start }, (unit, nextStart) => { ckpt.unit = unit; ckpt.start = nextStart; save(); });
     ckpt.qaAdded += added;                         // cumulative across a crash mid-round
     if (ckpt.qaAdded === 0) { log(`   QA round ${ckpt.qaRound}: ✓ clean — every name is a token`); break; }
@@ -98,14 +107,36 @@ if (ckpt.phase === 'qa') {
     ckpt.unit = 0; ckpt.start = 0; ckpt.qaAdded = 0; save();    // reset cursor for next round
     if (ckpt.qaRound === 5) log('   QA hit the 5-round limit — re-run if the last round still found leaks');
   }
+  ckpt.phase = 'audit'; ckpt.unit = 0; ckpt.start = 0; save();
+}
+
+// ── PASS 1.95: ALIAS AUDIT — the agentic loop over the COMPLETE map (resumable per person) ─────────
+// Runs AFTER QA on purpose (v2 lesson: QA additions were escaping the audit). Every alias is re-judged
+// with its provenance context; the model answers full-name/gender/occupation and gives a REASON before
+// any verdict counts; foreign surnames are discarded deterministically; discards are RE-HOMED so nothing
+// leaks. Afterwards the raw chats are RELOADED and the final clean map applied from scratch — wrong
+// tokenisations from earlier rounds cannot survive into the output.
+if (ckpt.phase === 'audit') {
+  log('Pass 1.95 — alias audit (reason-or-it-did-not-happen)');
+  const msgIndex = buildMessageIndex(chatMsgs, chatLabels);
+  const audit = await auditPass(ollamaIp, ckpt.people, groups, msgIndex, log,
+    { startPerson: ckpt.unit }, (nextPerson, people) => { ckpt.unit = nextPerson; ckpt.people = people; save(); });
+  writeFileSync(join(ANON_DIR, 'audit-removed.json'), JSON.stringify({ removed: audit.removed }, null, 2), 'utf8');
+  log(`  → audit: ${audit.discarded} discarded (${audit.deterministic} deterministic), ${audit.removed.length} fake people dissolved, ${audit.rehomed} re-homed; ${ckpt.people.length} people`);
+  // pristine re-apply: throw away all in-memory tokenisation, reload raw, apply the FINAL map once
+  for (let i = 0; i < chats.length; i++) {
+    chats[i].doc = JSON.parse(readFileSync(chats[i].file, 'utf8')) as TgExport;
+    chatMsgs[i] = chats[i].doc.messages ?? [];
+  }
+  applyToAll();
   writeAnon();
   const perGroup = groups.map((g) => `${ckpt.people.filter((p) => p.group === g).length} ${g}`).join(' + ');
-  log(`  → ${perGroup} mapped → anonymized/\n`);
+  log(`  → ${perGroup} mapped → anonymized/ (pristine re-apply)\n`);
   ckpt.phase = 'chunk'; ckpt.unit = 0; ckpt.start = 0; ckpt.chunkIndex = 0; ckpt.chunks = []; save();
 }
 
 // anonymisation-only mode: we're done once the map is verified and applied
-if (args.includes('--no-chunk')) { clearCheckpoint(HERE); log('(--no-chunk: skipping proposition extraction)'); process.exit(0); }
+if (args.includes('--no-chunk')) { clearCheckpoint(HERE); await guest?.release(); log('(--no-chunk: skipping proposition extraction)'); process.exit(0); }
 
 // ── PASS 2: chunk each anonymised chat into propositions (resumable per window, per file) ──────────
 if (ckpt.phase === 'chunk') {
@@ -161,6 +192,7 @@ log(`  → ${personChunks.length} person chunks (each routes to its sense-blobs 
 writeFileSync(join(OUT_DIR, 'chunks.jsonl'), allChunks.map((c) => JSON.stringify(c)).join('\n') + '\n', 'utf8');
 writeFileSync(join(OUT_DIR, 'chunks.md'), renderMarkdown(allChunks), 'utf8');
 clearCheckpoint(HERE);                              // success → nothing left to resume
+await guest?.release();                             // give the llm back — we were only a guest
 log(`\n✅ ${propositionChunks.length} proposition + ${personChunks.length} person chunks → data/processed/chunks.jsonl + chunks.md`);
 
 /** Pretty, scrollable view of the chunks so the reviewer can eyeball both types comfortably. */

@@ -9,11 +9,119 @@
 // The CODE APPLIES the swap deterministically and never lets the model rewrite messages — so the swap
 // is exact, reproducible, and can't drift.
 
-import type { TgMessage, Person } from './types.ts';
+import type { TgMessage, Person, FormOrigin } from './types.ts';
 import { prompts } from './prompts.ts';
 import { askJson } from './ollama.ts';
 
 const norm = (s: string) => s.toLowerCase().trim();
+
+// INTENTION: FIRST NAMES ARE A DICTIONARY, NOT AN EDIT DISTANCE. "Саша" ≡ "Олександр" at distance ∞;
+// "Міша" ≠ "Саша" at distance 2. Slavic diminutives are a closed, well-known set — THAT part is
+// deterministic. Each row: one name-root with its UA/RU full forms + diminutives (+ declined short
+// forms that stemming can't reach). Unknown names fall through to the generic lev rule / LLM audit.
+const NAME_ROOTS: string[][] = [
+  // male+female Alexander share one root ON PURPOSE: "Олександра" is BOTH the female name and the
+  // genitive of the male name — that ambiguity is the LLM audit's job (gender question), not stemming's.
+  ['олександр', 'александр', 'олександра', 'александра', 'олекса', 'саша', 'сашко', 'сашечка', 'сашенька', 'шура', 'санёк', 'санек', 'саня', 'сані', 'саню', 'санею', 'саші', 'сашу', 'сашею', 'сашою', 'сашо'],
+  ['михайло', 'михаил', 'міша', 'миша', 'мишко', 'мішко', 'міші', 'мішу', 'мішою', 'мишею'],
+  ['микола', 'николай', 'коля', 'колі', 'колю', 'колею', 'миколка'],
+  ['євген', 'евгений', 'женя', 'жені', 'женю', 'женею', 'жека'],
+  ['максим', 'макс', 'максу', 'макса', 'максим', 'максиму'],
+  ['володимир', 'владимир', 'вова', 'володя', 'вови', 'вові', 'вовою', 'вован'],
+  ['дмитро', 'дмитрий', 'діма', 'дима', 'дімі', 'діму', 'дімою', 'дімон'],
+  ['наталія', 'наталья', 'наташа', 'ната', 'наталі', 'наташі', 'наташу', 'наташею'],
+  ['ольга', 'оля', 'олі', 'олю', 'олею', 'олечка', 'ольгою'],
+  ['олена', 'елена', 'лена', 'лєна', 'лени', 'лені', 'леною', 'оленка'],
+  ['катерина', 'екатерина', 'катя', 'каті', 'катю', 'катею', 'катруся'],
+  ['тетяна', 'татьяна', 'таня', 'тані', 'таню', 'танею'],
+  ['ірина', 'ирина', 'іра', 'ира', 'ірі', 'іру', 'ірою', 'іринка'],
+  ['світлана', 'светлана', 'свєта', 'света', 'свєті', 'свєту', 'свєтою', 'світлані'],
+  ['анна', 'ганна', 'аня', 'ані', 'аню', 'анею', 'анька'],
+  ['марія', 'мария', 'маша', 'маші', 'машу', 'машею', 'марійка', 'маруся'],
+  ['юлія', 'юлия', 'юля', 'юлі', 'юлю', 'юлею'],
+  ['андрій', 'андрей', 'андрію', 'андрія', 'андрієм', 'дрон'],
+  ['сергій', 'сергей', 'серьожа', 'сірьожа', 'сірожа', 'серж', 'сергію', 'сергія'],
+  ['віктор', 'виктор', 'вітя', 'витя', 'віті', 'вітю', 'вітею'],
+  ['ігор', 'игорь', 'ігорю', 'ігоря', 'ігорем', 'гоша'],
+  ['павло', 'павел', 'паша', 'паші', 'пашу', 'пашею'],
+  ['петро', 'петр', 'петя', 'петі', 'петю', 'петею'],
+  ['юрій', 'юрий', 'юра', 'юри', 'юрі', 'юрою', 'юрчик'],
+  ['денис', 'дєн', 'ден', 'денису', 'дениса'],
+  ['артем', 'тьома', 'тёма', 'артему', 'артема'],
+  ['кирило', 'кирилл', 'кирилу', 'кирила'],
+  ['костянтин', 'константин', 'костя', 'кості', 'костю', 'костею'],
+  ['станіслав', 'станислав', 'стас', 'стасу', 'стаса'],
+  ["в'ячеслав", 'вячеслав', 'слава', 'славік', 'славик', 'слави', 'славі'],
+  ['ярослав', 'ярославу', 'ярослава', 'ярик'],
+  ['людмила', 'люда', 'люди', 'люді', 'людою', 'мила'],
+  ['оксана', 'оксані', 'оксану', 'оксаною', 'ксюша', 'ксюші'],
+  ['ілля', 'илья', 'іллі', 'іллю', 'іллею'],
+  ['роман', 'рома', 'роми', 'ромі', 'ромою'],
+  ['віталій', 'виталий', 'віталик', 'виталик', 'віталію'],
+  ['валентин', 'валентина', 'валя', 'валі', 'валю', 'валею'],
+  ['надія', 'надежда', 'надя', 'наді', 'надю', 'надею'],
+  ['любов', 'любовь', 'люба', 'люби', 'любі', 'любою'],
+  ['галина', 'галя', 'галі', 'галю', 'галею'],
+  ['софія', 'софия', 'соня', 'соні', 'соню', 'сонею'],
+  ['анастасія', 'анастасия', 'настя', 'насті', 'настю', 'настею'],
+  ['олексій', 'алексей', 'льоша', 'лёша', 'леша', 'льоші', 'льошу', 'олексію', 'лёха', 'льоха'],
+  ['вадим', 'вадиму', 'вадима'],
+  ['богдан', 'богдану', 'богдана', 'боді', 'бодя'],
+  ['тарас', 'тарасу', 'тараса'],
+  ['олег', 'олегу', 'олега', 'олегом', 'олежка'],
+  ['гліб', 'глеб', 'глібу', 'гліба', 'глебу'],
+];
+const ROOT_BY_VARIANT = new Map<string, number>();
+NAME_ROOTS.forEach((row, i) => row.forEach((v) => { if (!ROOT_BY_VARIANT.has(v)) ROOT_BY_VARIANT.set(v, i); }));
+
+/** Resolve a name token to its dictionary root index, declension-tolerant, or null if unknown.
+ *  Exact variant match first; then stem match (variant minus final vowel, ≥4 chars) for declined forms. */
+export function nameRoot(tokenRaw: string): number | null {
+  const t = norm(tokenRaw);
+  if (ROOT_BY_VARIANT.has(t)) return ROOT_BY_VARIANT.get(t)!;
+  for (const [v, i] of ROOT_BY_VARIANT) {
+    if (v.length < 4) continue;
+    const stem = v.slice(0, -1);
+    if (t.startsWith(stem) && t.length <= v.length + 3) return i;
+  }
+  return null;
+}
+
+/** Are two name tokens "the same name"? Dictionary roots are DECISIVE in both directions; only
+ *  unknown names fall back to declension-tolerant edit distance. */
+export function sameName(a: string, b: string): boolean {
+  const ra = nameRoot(a), rb = nameRoot(b);
+  if (ra !== null && rb !== null) return ra === rb;         // Саша≡Олександр; Міша≢Саша — decisive
+  if (ra !== null || rb !== null) {
+    // one is a known first name, the other isn't (likely a surname) → different words
+    const d = lev(norm(a), norm(b));
+    return d <= 2 && d <= Math.min(a.length, b.length) * 0.34;
+  }
+  const d = lev(norm(a), norm(b));
+  return d <= 2 && d <= Math.min(a.length, b.length) * 0.34;
+}
+
+/** INTENTION: DETERMINISTIC SURNAME GUARD — no LLM needed for "Олександр Наливайко" vs "Олександр
+ *  Байдо". A multi-word candidate may only attach to an existing person if EVERY word of it matches
+ *  (dictionary-aware: diminutive≡full name; unknowns via declension-tolerant edit distance) some word
+ *  the person already carries. One shared first name is NOT enough — the unmatched surname vetoes the
+ *  attach. Splitting is the safe error: the fuzzy+LLM merge pass can rejoin two halves of a real
+ *  person; nothing can un-blob a false merge. */
+export function tokensCompatible(person: Person, candidate: string): boolean {
+  const cand = candidate.trim().split(/\s+/).map(norm).filter((t) => t.length >= 3);
+  if (cand.length <= 1) return true;                       // single-word forms: overlap rule is enough
+  const own = [...new Set([person.canonical, ...person.forms].flatMap((f) => f.trim().split(/\s+/)).map(norm).filter((t) => t.length >= 3))];
+  return cand.every((c) => own.some((o) => sameName(c, o)));
+}
+
+/** All dictionary roots this person's name tokens resolve to (for single-word root-clash checks). */
+export function personRoots(person: Person): Set<number> {
+  const out = new Set<number>();
+  for (const f of [person.canonical, ...person.forms]) for (const t of f.trim().split(/\s+/)) {
+    const r = nameRoot(t); if (r !== null) out.add(r);
+  }
+  return out;
+}
 const flatten = (t: TgMessage['text']): string =>
   typeof t === 'string' ? t : Array.isArray(t) ? t.map((r) => (typeof r === 'string' ? r : r.text ?? '')).join('') : '';
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,7 +153,7 @@ const discoverSchema = (groups: string[]) => ({
  *  each window so the caller can persist a checkpoint. Reprocessing a window is safe — discovery just
  *  re-finds the same people and dedups them, so a resumed in-flight window can't double-count. */
 export async function discoverPeople(
-  ollamaIp: string, chats: TgMessage[][], groups: string[], windowN: number, log: (s: string) => void,
+  ollamaIp: string, chats: TgMessage[][], labels: string[], groups: string[], windowN: number, log: (s: string) => void,
   resume?: { startUnit: number; startWin: number; people: Person[] },
   onWindow?: (unit: number, nextStart: number, people: Person[]) => void,
 ): Promise<Person[]> {
@@ -54,15 +162,21 @@ export async function discoverPeople(
   if (resume) {   // continue an interrupted run: reuse the map, rebuild counters from its highest tokens
     people = resume.people;
     for (const p of people) { const n = parseInt(p.token.replace(/^\D+/, ''), 10); if (!Number.isNaN(n)) counters[p.group] = Math.max(counters[p.group] ?? 0, n); }
-  } else {        // fresh run: seed chat participants into the first group
-    const roster = [...new Set(chats.flat().flatMap((m) => [m.from, m.actor].filter((x): x is string => !!x && x.trim() !== '')))];
-    people = roster.map((name) => ({ token: `${groups[0]}${++counters[groups[0]]}`, group: groups[0], canonical: name, forms: [name] }));
+  } else {        // fresh run: seed chat participants into the first group (provenance: first message sent)
+    const seen = new Map<string, FormOrigin>();
+    chats.forEach((msgs, ci) => { for (const m of msgs) for (const name of [m.from, m.actor])
+      if (name && name.trim() && !seen.has(name)) seen.set(name, { doc: labels[ci], messageId: m.id, context: `${name}: ${flatten(m.text)}`.slice(0, 220) }); });
+    people = [...seen.entries()].map(([name, origin]) => ({
+      token: `${groups[0]}${++counters[groups[0]]}`, group: groups[0], canonical: name, forms: [name],
+      provenance: { [name]: origin },
+    }));
   }
   const schema = discoverSchema(groups);
   const startUnit = resume?.startUnit ?? 0;
   const startWin = resume?.startWin ?? 0;
 
   const peopleView = () => people.length ? people.map((p) => `${p.token} = ${p.canonical} (${p.forms.join(', ')})`).join('\n') : '(none yet)';
+  let dropped = 0;   // forms rejected by the verbatim gate
 
   for (let ci = startUnit; ci < chats.length; ci++) {
     const messages = chats[ci];
@@ -89,21 +203,42 @@ export async function discoverPeople(
         }
         forms = [...new Set(forms.map((s) => s.trim()).filter(Boolean))];
         if (forms.length === 0) forms = [canonical];
-        const group = groups.includes(String(raw.group)) ? String(raw.group) : groups[groups.length - 1];
-        const p = { canonical, group, forms };
-        const formsN = p.forms.map(norm);
-        // same person only if canonical matches or a spelling overlaps one we already know
-        let e = people.find((x) => norm(x.canonical) === norm(p.canonical) || x.forms.some((f) => formsN.includes(norm(f))));
-        if (!e) {
-          e = { token: `${group}${++counters[group]}`, group, canonical: p.canonical, forms: [] };
-          people.push(e);
-          log(`   + ${group}: ${p.canonical} → ${e.token}`);
+
+        // INTENTION: VERBATIM GATE + PROVENANCE. A reported spelling only counts if it literally occurs
+        // in THIS window's text (or a sender field) — anything else is a hallucinated variant (latinised,
+        // corrupted, invented) and is dropped on the spot. Every surviving form records WHERE it was seen
+        // (doc + messageId), so a wrong alias is later fixable and the audit pass can show real context.
+        const windowLow = msgs.map((m) => ({ id: m.id, from: m.from, raw: m.text, text: `${m.from ?? ''}\n${m.text}`.toLowerCase() }));
+        const witnessed: Array<{ form: string; origin: FormOrigin }> = [];
+        for (const f of forms) {
+          const hit = windowLow.find((m) => m.text.includes(f.toLowerCase()));
+          if (hit) witnessed.push({ form: f, origin: { doc: labels[ci], messageId: hit.id, context: `${hit.from ?? ''}: ${hit.raw}`.slice(0, 220) } });
+          else dropped++;
         }
-        e.forms = [...new Set([...e.forms, ...p.forms])];
+        if (witnessed.length === 0) continue;      // nothing verifiable → the whole report is noise
+
+        const group = groups.includes(String(raw.group)) ? String(raw.group) : groups[groups.length - 1];
+        const formsN = witnessed.map((w) => norm(w.form));
+        // same person only if canonical matches or a spelling overlaps one we already know —
+        // AND the deterministic surname guard agrees (a shared first name never overrides a foreign surname)
+        let e = people.find((x) => (norm(x.canonical) === norm(canonical) || x.forms.some((f) => formsN.includes(norm(f))))
+          && tokensCompatible(x, canonical));
+        if (!e) {
+          e = { token: `${group}${++counters[group]}`, group, canonical, forms: [], provenance: {} };
+          people.push(e);
+          log(`   + ${group}: ${canonical} → ${e.token}`);
+        }
+        e.provenance ??= {};
+        for (const w of witnessed) {
+          if (!tokensCompatible(e, w.form)) { dropped++; continue; }   // foreign surname riding along → veto
+          if (!e.forms.includes(w.form)) e.forms.push(w.form);
+          e.provenance[w.form] ??= w.origin;       // first sighting wins — stable evidence
+        }
       }
       onWindow?.(ci, start + windowN, people);   // checkpoint: next window to process
     }
   }
+  if (dropped) log(`   ✂ verbatim gate dropped ${dropped} hallucinated form(s) (not present in their window)`);
   return people;
 }
 
@@ -132,6 +267,9 @@ const tokensOf = (p: Person) => [...new Set([...p.forms, p.canonical].flatMap((f
 function fuzzyCandidate(a: Person, b: Person): boolean {
   for (const x of tokensOf(a)) for (const y of tokensOf(b)) {
     if (x === y) return true;
+    // dictionary first: Саша ↔ Олександр are a candidate pair at edit-distance ∞
+    const rx = nameRoot(x), ry = nameRoot(y);
+    if (rx !== null && ry !== null && rx === ry) return true;
     const min = Math.min(x.length, y.length);
     if (min >= 4 && lev(x, y) <= 2 && lev(x, y) <= min * 0.34) return true;
   }
@@ -155,6 +293,7 @@ export async function mergePass(ollamaIp: string, people: Person[], log: (s: str
       } catch { continue; }
       if (r.same === true) {
         a.forms = [...new Set([...a.forms, ...b.forms])];
+        a.provenance = { ...(b.provenance ?? {}), ...(a.provenance ?? {}) };  // keep a's origins on clashes
         log(`   ⇄ merged ${b.canonical} → ${a.token}  (${r.reason ?? 'same person'})`);
         people.splice(j, 1); j--; merges++;
       }
@@ -174,7 +313,7 @@ export async function mergePass(ollamaIp: string, people: Person[], log: (s: str
 const looksLikeToken = (s: string) => /^[a-z]+\d+$/i.test(s.trim());
 
 export async function qaPass(
-  ollamaIp: string, chats: TgMessage[][], people: Person[], groups: string[], windowN: number, log: (s: string) => void,
+  ollamaIp: string, chats: TgMessage[][], labels: string[], people: Person[], groups: string[], windowN: number, log: (s: string) => void,
   resume?: { startUnit: number; startWin: number },
   onWindow?: (unit: number, nextStart: number) => void,
 ): Promise<number> {
@@ -194,15 +333,30 @@ export async function qaPass(
       for (const L of r.leaks ?? []) {
         const canonical = String(L.canonical ?? '').trim();
         if (!canonical || looksLikeToken(canonical)) continue;              // ignore tokens reported by mistake
-        const forms = [...new Set([...(Array.isArray(L.forms) ? L.forms.map(String) : []), canonical].map((s) => s.trim()).filter((s) => s && !looksLikeToken(s)))];
-        const formsN = forms.map(norm);
-        let e = people.find((x) => norm(x.canonical) === norm(canonical) || x.forms.some((f) => formsN.includes(norm(f))));
+        const rawForms = [...new Set([...(Array.isArray(L.forms) ? L.forms.map(String) : []), canonical].map((s) => s.trim()).filter((s) => s && !looksLikeToken(s)))];
+        // same verbatim gate as discovery: a leak must actually OCCUR in this window's text
+        const winLow = msgs.map((m) => ({ id: m.id, raw: m.text, text: m.text.toLowerCase() }));
+        const witnessed: Array<{ form: string; origin: FormOrigin }> = [];
+        for (const f of rawForms) {
+          const hit = winLow.find((m) => m.text.includes(f.toLowerCase()));
+          if (hit) witnessed.push({ form: f, origin: { doc: labels[ci], messageId: hit.id, context: hit.raw.slice(0, 220) } });
+        }
+        if (witnessed.length === 0) continue;
+        const formsN = witnessed.map((w) => norm(w.form));
+        // deterministic surname guard here too — QA additions must not glue onto a foreign person
+        let e = people.find((x) => (norm(x.canonical) === norm(canonical) || x.forms.some((f) => formsN.includes(norm(f))))
+          && tokensCompatible(x, canonical));
         if (!e) {
-          e = { token: `${leakGroup}${++counters[leakGroup]}`, group: leakGroup, canonical, forms: [] };
+          e = { token: `${leakGroup}${++counters[leakGroup]}`, group: leakGroup, canonical, forms: [], provenance: {} };
           people.push(e); added++;
           log(`   ✗ QA leak caught: ${canonical} → ${e.token}`);
         }
-        e.forms = [...new Set([...e.forms, ...forms])];
+        e.provenance ??= {};
+        for (const w of witnessed) {
+          if (!tokensCompatible(e, w.form)) continue;   // foreign surname riding along → veto
+          if (!e.forms.includes(w.form)) e.forms.push(w.form);
+          e.provenance[w.form] ??= w.origin;
+        }
       }
       onWindow?.(ci, start + windowN);   // checkpoint: next window in this round
     }
