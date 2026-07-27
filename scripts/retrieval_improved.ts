@@ -76,7 +76,7 @@ async function classifyQuery(q: string, ip: string): Promise<string[]> {
   if (gate) {
     raw = await gate.generate(prompt, { model: 'gemma-domains' });
   } else {
-    // standalone path (Maradel down — demo/dev): straight to Ollama, same as embed.ts's raw fallback
+    // standalone path (no gateway — demo/dev): straight to Ollama, same as embed.ts's raw fallback
     const res = await fetch(`http://${ip}/api/chat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'gemma-domains', messages: [{ role: 'user', content: prompt }], stream: false, options: { temperature: 0 } }),

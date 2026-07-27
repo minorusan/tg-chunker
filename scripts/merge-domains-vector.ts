@@ -4,7 +4,7 @@
 // the usable 0.85–0.88 band for domains and the 0.80 chaining cliff — unlike person names, where no
 // usable threshold existed at all. ═══
 // HW3 groundwork — VECTOR-based domain merge.
-// Embed the deterministically-merged domain names (nomic, through the Maradel gateway as guest),
+// Embed the deterministically-merged domain names (nomic, through the shared-GPU gateway as guest),
 // cosine every pair, cluster with union-find at several thresholds, and show the sweep — pick the
 // threshold by looking, not by faith. (Name-merge taught us nomic can't separate PEOPLE; domains are
 // TOPICS — exactly what a retrieval embedder is built to compare. Let's see.)

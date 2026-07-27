@@ -2,8 +2,8 @@
 // HW3 groundwork — DOMAIN MINING (exploratory pass, output feeds the user's planning).
 //
 // Step 1: gather every proposition text from chunks.jsonl into ONE big file (data/domains/propositions.txt).
-// Step 2: the model reads it in big bulks (through the Maradel gateway as GUEST — one door, gemma,
-//         lowest priority, yields to maradel/ayin/podcast) and, per bulk, spits out the 2–3 word
+// Step 2: the model reads it in big bulks (through the shared-GPU gateway as GUEST — one door, gemma,
+//         lowest priority, yields to any active authority) and, per bulk, spits out the 2–3 word
 //         domain names it can come up with for that material.
 // Output: data/domains/bulks.jsonl (raw per-bulk lists, appended as we go — a crash loses nothing and
 //         a rerun skips finished bulks) + data/domains/domains-raw.md (aggregated, frequency-sorted).

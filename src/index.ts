@@ -27,8 +27,8 @@ const windowN = parseInt(arg('window', '12')!, 10);   // N — bounded by how mu
 // (goodies,baddies / staff,client,vendor / …). The FIRST group is the chat's own participants.
 const groups = (arg('groupingTags', 'employee,patient')!).split(',').map((g) => g.trim()).filter(Boolean);
 const domain = arg('domain', 'chat')!;                // free-form metadata tag for the KB
-// --llmAuthority http://host:9100 → run as the lowest-priority GUEST of maradel's llm resource:
-// every LLM call waits for a guest grant and yields whenever a real authority (maradel/ayin/podcast)
+// --llmAuthority http://host:9100 → run as the lowest-priority GUEST of the shared-GPU gateway:
+// every LLM call waits for a guest grant and yields whenever a higher-priority authority
 // is active. Omit on boxes without the daemon — calls then go straight to Ollama, ungated.
 const llmAuthority = arg('llmAuthority');
 if (!sourceDir) { console.error('usage: node src/index.ts --sourceDir <dir> --ollamaIp <host:port> [--groupingTags employee,patient] [--domain chat] [--window N] [--no-chunk] [--fresh] [--llmAuthority http://host:9100]'); process.exit(1); }
@@ -54,7 +54,7 @@ log(`tg-chunker — local model @ ${ollamaIp} (offline)`);
 log(`  ${files.length} chat(s), ${chats.reduce((n, c) => n + (c.doc.messages?.length ?? 0), 0)} messages, window N=${windowN}`);
 log(`  groups: ${groups.join(', ')}  (first = chat participants)\n`);
 const guest = llmAuthority ? new GuestGate(llmAuthority, log) : null;
-if (guest) { log(`  llm authority: GUEST of ${llmAuthority} (lowest priority — yields to maradel/ayin/podcast)\n`); setLlmGate(() => guest.ensure()); }
+if (guest) { log(`  llm authority: GUEST of ${llmAuthority} (lowest priority — yields to all named authorities)\n`); setLlmGate(() => guest.ensure()); }
 await warmup(ollamaIp);
 
 // ── STATE SAVE/RESTORE: resume an interrupted run, or start fresh ──────────────────────────────────

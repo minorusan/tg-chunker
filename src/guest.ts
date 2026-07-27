@@ -1,16 +1,17 @@
-// GUEST GATE — tg-chunker as a polite citizen of the shared-GPU world (the "one door" discipline).
+// GUEST GATE — this tool as a polite citizen of a SHARED GPU (the "one door" discipline).
 //
-// The NUC's LLM is arbitrated by maradel's llm resource (POST /resource/llm on the daemon): authorities
-// maradel/ayin/podcast own the model; `guest` is the FOURTH, lowest authority — it uses gemma (shares
-// maradel's model, so a guest grant swaps nothing) and only ever gets root when the stack is EMPTY.
+// The host machine runs one LLM server shared by several applications, arbitrated by a resource
+// gateway (POST /resource/llm): named authorities own the model; `guest` is the LOWEST authority —
+// it uses the default chat model (shares it, so a guest grant swaps nothing) and only ever gets a
+// grant when nobody else holds the resource.
 //
 // INTENTION: LEAST PRIORITY, ALWAYS YIELDS. Before every LLM call the pipeline calls ensure():
 //   - we hold a fresh grant → proceed (refreshed every few minutes to slide the TTL);
-//   - resource busy (maradel is chatting, ayin is coding, podcast is rendering) → WAIT, polling until
-//     free. The checkpointed pipeline makes waiting free — it just pauses between windows.
+//   - resource busy (a higher-priority app is using the GPU) → WAIT, polling until free. The
+//     checkpointed pipeline makes waiting free — it just pauses between windows.
 //   - we get preempted mid-run → the next ensure() sees `busy` and waits again. Nothing is lost.
-// Fail-loud: if the authority daemon is unreachable while --llmAuthority was requested, we crash —
-// running ungated when gating was asked for would be a silent race with someone's live work.
+// Fail-loud: if the gateway is unreachable while gating was requested, we crash — running ungated
+// when gating was asked for would be a silent race with someone's live work.
 
 const REFRESH_MS = 4 * 60 * 1000;   // re-enqueue cadence (grant TTL below is 10 min)
 const GRANT_TTL_MS = 10 * 60 * 1000; // short grant → a killed run frees the resource quickly
@@ -106,10 +107,10 @@ export class GuestGate {
   }
 }
 
-// ── Lab gateway singleton ────────────────────────────────────────────────────
-// When LLM_GATEWAY is set (the nuk-lab container always sets it), every LLM call goes through the
-// Maradel gateway as `guest` — the one door. When it's UNSET (legacy standalone: Maradel down, raw
-// Ollama via --ollamaIp), this returns null and the caller falls back to the direct path.
+// ── Gateway singleton ────────────────────────────────────────────────────────
+// When the LLM_GATEWAY env var is set, every LLM call goes through the resource gateway as `guest` —
+// the one door to the shared GPU. When it's UNSET (standalone: raw Ollama via --ollamaIp), this
+// returns null and callers fall back to the direct path.
 let shared: GuestGate | null = null;
 let resolved = false;
 export function labGate(): GuestGate | null {

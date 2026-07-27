@@ -1,0 +1,103 @@
+@startuml optimized-retrieval-pipeline
+title tg-chunker — Optimized Retrieval Pipeline (HW3)\n"navmesh routing → deterministic pruning → hybrid ranking → grounded answer"
+
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam activity {
+  BackgroundColor #ffffff
+  BorderColor #0e7490
+  DiamondBackgroundColor #e0f2f7
+  DiamondBorderColor #0e7490
+}
+skinparam partition {
+  BackgroundColor #fbfdfe
+  BorderColor #d7e3e8
+}
+skinparam note {
+  BackgroundColor #fdf6e7
+  BorderColor #ecd9ae
+}
+
+|#e0f2f7|Query time (per user turn)|
+start
+:user query\n«скільки коштує гігієна на брекетах?»;
+
+partition "1. DOMAIN EXTRACTION — the navmesh (user-designed)" {
+  :gemma-domains\nGemma-3-270M, FULL fine-tune on 5k synthetic pairs\n81% exact / 84% usable (held-out);
+  note right
+    CPU-pinned (num_gpu 0) —
+    a 543MB sidecar must never
+    evict the 20GB main model.
+    Served by Ollama, reached via
+    the resource gateway as guest
+    (utility-model op) or raw
+    when standalone/demo.
+    Contract: prompts/13 —
+    single-sourced across
+    train / eval / runtime.
+  end note
+  :parse FIRST line → split "; ";
+  :validate against corpus taxonomy\n(chunk-domains.json sidecar);
+}
+
+partition "2. DETERMINISTIC PRUNING — O(1) metadata filter" {
+  :filter chunks to extracted domains;
+  if (filtered pool < k?) then (yes — over-narrow)
+    :FALL BACK to full corpus\n(visible: "⚠ fallback", never silent);
+  else (no)
+    :searched 6-8/18 instead of 18\n(the navmesh payoff);
+  endif
+}
+
+partition "3. HYBRID RANKING — BM25 ⊕ cosine (RRF)" {
+  fork
+    :cosine\nnomic-embed-text\n(search_query: prefix);
+  fork again
+    :BM25\nunicode word tokens\nk1=1.5, b=0.75;
+  end fork
+  :Reciprocal Rank Fusion\nscore = Σ 1/(60 + rank);
+  note right
+    Fixes HW2's documented failure:
+    0.001-margin cosine flips.
+    Keyword votes rescue queries
+    the embedder fumbles —
+    proven on «політика щодо
+    телефонних консультацій».
+  end note
+  :top-k chunks (k=5)\nwith chunk_id · domains · cos# · bm25# · provenance;
+}
+
+partition "4. GROUNDED ANSWER — gemma4:26b" {
+  :fuse ONE prompt (prompts/07):\ninstruction (retention persona)\n+ KB fragments (dated)\n+ full chat transcript\n+ latest question;
+  note right
+    Stateless server — the client
+    carries the transcript.
+    Rules: facts ONLY from fragments,
+    newer-beats-older, honest
+    "уточню у лікаря", tokens
+    never leak, ALWAYS pull toward
+    booking / free first exam.
+  end note
+  :verbose answer +\npipeline X-ray (domains, pool, chunks, exact prompt);
+}
+stop
+
+|#f4f8fa|Offline preparation (once per corpus)|
+start
+:chunks.jsonl (HW1 propositions + person cards);
+partition "Emergent taxonomy (user-designed)" {
+  :mine domains in big bulks —\nmodel NAMES what it sees (prompts/08)\n9,938 props → 120 raw names;
+  :deterministic merge (levenshtein→exact)\n120 → 118 — proved tail = synonymy;
+  :vector merge sweep — usable band 0.85-0.88;
+  repeat :shrinking synonym loop (prompts/12)\nvector proposes 10 nearest,\ngemma disposes, picked = excluded;
+  repeat while (pool not empty & pass < 3)
+  :30 canonical domains;
+}
+partition "Assignment + extractor training" {
+  :mine WITH mapping (prompts/09) →\nbool one-shot judge (prompts/10)\n→ chunk-domains.json sidecar;
+  :9 sonnet hounds × 500 synthetic queries\n→ 5,536 unique pairs (uk/ru/translit/typos);
+  :full fine-tune Gemma-3-270M\n(Google's official 270M recipe:\nLR 5e-5, 5 epochs, batch 4)\n62s on the 3090;
+  :GGUF → ollama create gemma-domains;
+}
+stop
+@enduml
