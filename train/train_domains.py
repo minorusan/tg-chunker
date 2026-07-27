@@ -28,7 +28,12 @@ def load(split):
     rows = [json.loads(l) for l in open(os.path.join(DATA, f"{split}.jsonl"), encoding="utf-8") if l.strip()]
     return rows
 
-PROMPT = "Extract the knowledge-base domains for this query.\nQuery: {q}\nDomains:"
+# The extractor's I/O contract — SINGLE-SOURCED from prompts/13_extract_domains.md (strip the
+# HTML audit note, swap the {{QUERY}} slot for a python format slot). Training, eval and the TS
+# runtime all render the exact same text; drift here breaks the trained model's contract.
+import re as _re
+with open(os.path.join(HERE, "..", "prompts", "13_extract_domains.md"), encoding="utf-8") as _f:
+    PROMPT = _re.sub(r"^<!--.*?-->\s*", "", _f.read(), flags=_re.S).strip().replace("{{QUERY}}", "{q}")
 
 def to_chat(tokenizer, rows):
     # one training example = chat turn (user: instruction+query, model: "d1; d2")

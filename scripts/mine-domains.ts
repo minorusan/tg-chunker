@@ -39,19 +39,10 @@ const BULKS_LOG = join(OUT_DIR, 'bulks.jsonl');
 const done = new Set<number>();
 if (existsSync(BULKS_LOG)) for (const l of readFileSync(BULKS_LOG, 'utf8').trim().split('\n').filter(Boolean)) done.add(JSON.parse(l).bulk);
 
-const prompt = (batch: string[]) => `You are building a topic taxonomy for a knowledge base of a dental clinic's internal work chats (Ukrainian/Russian).
-Below are ${batch.length} knowledge propositions. Read them all, then list the DOMAIN NAMES you can come up with that these propositions belong to.
-
-Rules:
-- each domain name: 2-3 words, English, lowercase (e.g. "pricing rules", "patient scheduling")
-- domains describe TOPICS of the material, not the clinic itself
-- 5-15 domains per answer — only ones genuinely present in this material
-- answer with ONLY a JSON array of strings, nothing else
-
-PROPOSITIONS:
-${batch.map((p, i) => `${i + 1}. ${p}`).join('\n')}
-
-JSON array:`;
+// OPTIMIZATION (user-designed) — EMERGENT TAXONOMY: no predefined domains; the model reads big bulks
+// and names what it sees. Signal = recurrence across independent bulks. Prompt: prompts/08_mine_domains.md.
+import { prompts } from '../src/prompts.ts';
+const prompt = (batch: string[]) => prompts.mineDomains({ COUNT: String(batch.length), PROPOSITIONS: batch.map((p, i) => `${i + 1}. ${p}`).join('\n') });
 
 /** Lenient parse: JSON array anywhere in the text, else line-split fallback. */
 function parseDomains(raw: string): string[] {

@@ -12,6 +12,7 @@ import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { labGate } from '../src/guest.ts';
+import { prompts } from '../src/prompts.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'data/domains');
@@ -37,19 +38,10 @@ console.log(`${chunks.length} proposition chunks → ${nBulks} bulk(s) of ~${BUL
 for (let bi = 0; bi < nBulks; bi++) {
   if (done.has(bi)) { console.log(`  bulk ${bi + 1}/${nBulks}: done (resume)`); continue; }
   const batch = chunks.slice(bi * BULK, (bi + 1) * BULK);
-  const prompt = `You are building a topic taxonomy for a dental clinic's internal knowledge base (Ukrainian/Russian chats).
-Below are ${batch.length} NUMBERED knowledge chunks. Come up with the domain names present in this material (2-3 words, English, lowercase) AND assign every chunk number to the domain(s) it belongs to.
-
-Rules:
-- 5-15 domains, only ones genuinely present
-- every chunk number must appear in at least one domain's list
-- a chunk may appear in 2 domains if it genuinely spans both
-- answer with ONLY this JSON: {"domains":[{"name":"...","chunks":[1,5,12]}, ...]}
-
-CHUNKS:
-${batch.map((c, i) => `${i + 1}. ${c.text}`).join('\n')}
-
-JSON:`;
+  // OPTIMIZATION (user-designed) — MINE WITH THE MAPPING: "feed propositions from 20 chunks, come up
+  // with 5 domains, map those 20 with those 5" — the mapping we used to discard IS the assignment.
+  // Prompt: prompts/09_mine_domains_mapped.md.
+  const prompt = prompts.mineDomainsMapped({ COUNT: String(batch.length), MIN: '5', MAX: '15', CHUNKS: batch.map((c, i) => `${i + 1}. ${c.text}`).join('\n') });
   const raw = await gate.generate(prompt);
   const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
   let assignments: Array<{ name: string; chunks: number[] }> = [];

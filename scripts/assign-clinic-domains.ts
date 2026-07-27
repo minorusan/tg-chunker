@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { labGate } from '../src/guest.ts';
+import { prompts } from '../src/prompts.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gate = labGate();
@@ -22,15 +23,12 @@ const props = all.filter((c) => c.chunk_type === 'proposition');
 const persons = all.filter((c) => c.chunk_type === 'person');
 
 // ── 1 mining call: domains + the chunk mapping ──────────────────────────────
-const mineRaw = await gate.generate(`You are building a topic taxonomy for a dental clinic's internal knowledge base (Ukrainian/Russian chats).
-Below are ${props.length} NUMBERED knowledge chunks. Come up with the domain names present (2-3 words, English, lowercase) AND assign every chunk number to the domain(s) it belongs to.
-Rules: 3-8 domains; every chunk in at least one; a chunk may take 2 domains if it genuinely spans both.
-Answer ONLY this JSON: {"domains":[{"name":"...","chunks":[1,5]}, ...]}
-
-CHUNKS:
-${props.map((c, i) => `${i + 1}. ${c.text}`).join('\n')}
-
-JSON:`);
+// OPTIMIZATION (user-designed) — MINE WITH THE MAPPING (prompts/09): the bulk pass returns per-domain
+// chunk numbers, so mining and candidate-assignment are ONE call on this small corpus.
+const mineRaw = await gate.generate(prompts.mineDomainsMapped({
+  COUNT: String(props.length), MIN: '3', MAX: '8',
+  CHUNKS: props.map((c, i) => `${i + 1}. ${c.text}`).join('\n'),
+}));
 const a = mineRaw.indexOf('{'), b = mineRaw.lastIndexOf('}');
 const mined = (JSON.parse(mineRaw.slice(a, b + 1)) as { domains: Array<{ name: string; chunks: number[] }> }).domains
   .map((d) => ({ name: d.name.toLowerCase().trim(), chunks: (d.chunks ?? []).map(Number).filter((n) => n >= 1 && n <= props.length) }))
@@ -48,7 +46,8 @@ mined.forEach((d) => d.chunks.forEach((n) => {
 const out: Record<string, string[]> = {};
 for (const c of props) {
   const doms = [...(candidates.get(String(c.chunk_id)) ?? new Set(mined.map((d) => d.name)))];
-  const raw = await gate.generate(`Knowledge chunk from a dental clinic KB:\n"${c.text}"\n\nCandidate domains:\n${doms.map((d, i) => `${i + 1}. ${d}`).join('\n')}\n\nFor EACH domain: does this chunk belong to it? STRICT JSON, same order:\n{"verdicts":[{"n":1,"belongs":true|false}...]}`);
+  // OPTIMIZATION (user-designed) — bool one-shot judging per chunk (prompts/10_domain_membership.md)
+  const raw = await gate.generate(prompts.domainMembership({ TEXT: String(c.text), DOMAINS: doms.map((d, i) => `${i + 1}. ${d}`).join('\n') }));
   const x = raw.indexOf('{'), y = raw.lastIndexOf('}');
   let belongs: string[] = [];
   try {

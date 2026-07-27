@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// ═══ OPTIMIZATION AUTHORED BY THE USER: deterministic-first — "first do levenshtein to prepare
+// better exact match, then try merge by exact match. See what happens." Outcome: 120→118 (2 merges) —
+// the honest negative result PROVING the tail was synonym drift, not spelling drift, which is what
+// justified the vector pass next. Cheap experiment, expensive insight. ═══
 // HW3 groundwork — DETERMINISTIC domain merge (no LLM).
 // Pass A (levenshtein prep): cluster near-identical spellings — plural/singular, tiny drifts
 //   ("patient communication" ↔ "patient communications") — via whole-string edit distance.

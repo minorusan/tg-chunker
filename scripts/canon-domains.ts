@@ -33,14 +33,12 @@ const gate = labGate();
 if (!gate) { console.error('LLM_GATEWAY not set — one door only'); process.exit(1); }
 
 // ── THE PROMPT VARIANTS (the only thing that differs between experiments) ─────────────────────────
+// v1 is the PRODUCTION prompt, extracted to prompts/12_domain_synonyms.md (user's spec: "keep
+// instruction minimal so full focus on simple task"). v2-v6 are the prompt-engineering sweep variants —
+// kept inline because they are experiments, not production surface.
+import { prompts as promptFiles } from '../src/prompts.ts';
 const PROMPTS: Record<string, (anchor: string, cands: string[]) => string> = {
-  // v1 — the original minimal prompt (baseline)
-  v1: (anchor, cands) => `Topic: "${anchor}"
-
-Candidates:
-${cands.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
-Which candidates are just other names for the SAME topic? Answer with a JSON array of their numbers, e.g. [1,4]. If none: []`,
+  v1: (anchor, cands) => promptFiles.domainSynonyms({ ANCHOR: anchor, CANDIDATES: cands.map((c, i) => `${i + 1}. ${c}`).join('\n') }),
 
   // v2 — tagging-equivalence criterion + one positive and one negative example
   v2: (anchor, cands) => `We are merging duplicate labels in a document-tagging taxonomy.
@@ -141,6 +139,11 @@ if (existsSync(LOG)) {
   if (canon.length) console.log(`resumed: ${canon.length} anchors already decided, ${pool.size} left in pool`);
 }
 
+// ═══ THE SHRINKING SYNONYM LOOP — OPTIMIZATION AUTHORED BY THE USER ═══════════════════════════════
+// His spec, implemented verbatim: for each domain (highest-count first) present its 10 nearest
+// unused neighbours (vector proposes); the model picks which are just other names for the SAME topic
+// (LLM disposes); picked synonyms are EXCLUDED from the pool — "so it is dynamic and shrinks till
+// nothing to look at". Iterated to near-fixpoint over 3 passes: 118 → 56 → 37 → 30 canonical domains.
 while (pool.size > 0) {
   // anchor = highest-count domain still in the pool
   const anchor = items.find((d) => pool.has(d.domain))!.domain;

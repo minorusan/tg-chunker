@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// ═══ OPTIMIZATION AUTHORED BY THE USER: "we need to vectorize results and perform vector-based
+// merge" — after strings proved blind to synonymy. The threshold SWEEP (rather than one guess) found
+// the usable 0.85–0.88 band for domains and the 0.80 chaining cliff — unlike person names, where no
+// usable threshold existed at all. ═══
 // HW3 groundwork — VECTOR-based domain merge.
 // Embed the deterministically-merged domain names (nomic, through the Maradel gateway as guest),
 // cosine every pair, cluster with union-find at several thresholds, and show the sweep — pick the

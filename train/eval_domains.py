@@ -12,7 +12,10 @@ tok = AutoTokenizer.from_pretrained(os.path.join(HERE, "out", "merged"))
 model = AutoModelForCausalLM.from_pretrained(os.path.join(HERE, "out", "merged"), dtype=torch.bfloat16, device_map="cuda")
 model.eval()
 
-PROMPT = "Extract the knowledge-base domains for this query.\nQuery: {q}\nDomains:"
+# same single-sourced contract as training — see prompts/13_extract_domains.md
+import re as _re
+with open(os.path.join(HERE, "..", "prompts", "13_extract_domains.md"), encoding="utf-8") as _f:
+    PROMPT = _re.sub(r"^<!--.*?-->\s*", "", _f.read(), flags=_re.S).strip().replace("{{QUERY}}", "{q}")
 exact = partial = empty = invalid = 0
 for r in rows:
     msgs = [{"role": "user", "content": PROMPT.format(q=r["text"])}]

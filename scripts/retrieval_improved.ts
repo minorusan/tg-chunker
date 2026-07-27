@@ -21,6 +21,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { embedQuery, cosine } from '../src/embed.ts';
 import { labGate } from '../src/guest.ts';
+import { prompts } from '../src/prompts.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -65,7 +66,11 @@ class BM25 {
  *  is "domain1; domain2". Only domains that actually exist in this corpus's sidecar survive —
  *  an extractor hallucination can then only widen to fallback, never route to a ghost domain. */
 async function classifyQuery(q: string, ip: string): Promise<string[]> {
-  const prompt = `Extract the knowledge-base domains for this query.\nQuery: ${q}\nDomains:`;
+  // OPTIMIZATION (user-designed) — THE NAVMESH: a tiny TRAINED model (Gemma-3-270M fine-tuned on 5k
+  // synthetic pairs) extracts domains from the user prompt, so the search space is cut at O(1) BEFORE
+  // ranking. Prompt = prompts/13_extract_domains.md — the model's trained I/O contract, single-sourced
+  // across training, eval and runtime.
+  const prompt = prompts.extractDomains({ QUERY: q });
   const gate = labGate();
   let raw: string;
   if (gate) {

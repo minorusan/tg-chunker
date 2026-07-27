@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { labGate } from '../src/guest.ts';
+import { prompts } from '../src/prompts.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gate = labGate();
@@ -20,7 +21,8 @@ const all = readFileSync(join(ROOT, 'data/processed/chunks.jsonl'), 'utf8').trim
 const out: Record<string, string[]> = {};
 for (const c of all) {
   if (c.chunk_type === 'person') { out[String(c.chunk_id)] = ['people directory']; continue; }
-  const raw = await gate.generate(`Knowledge chunk from a dental clinic KB:\n"${c.text}"\n\nDomain taxonomy:\n${labels.map((d, i) => `${i + 1}. ${d}`).join('\n')}\n\nWhich 1-3 domains does this chunk belong to? JSON array of numbers only.`);
+  // prompts/11_assign_canon.md — one taxonomy for corpus metadata AND the trained extractor
+  const raw = await gate.generate(prompts.assignCanon({ TEXT: String(c.text), TAXONOMY: labels.map((d, i) => `${i + 1}. ${d}`).join('\n') }));
   const a = raw.indexOf('['), b = raw.lastIndexOf(']');
   let doms: string[] = [];
   if (a >= 0 && b > a) { try { doms = (JSON.parse(raw.slice(a, b + 1)) as unknown[]).map((n) => labels[Number(n) - 1]).filter(Boolean); } catch { /* below */ } }

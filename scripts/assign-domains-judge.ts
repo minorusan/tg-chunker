@@ -13,6 +13,7 @@ import { readFileSync, appendFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { labGate } from '../src/guest.ts';
+import { prompts } from '../src/prompts.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'data/domains');
@@ -63,14 +64,9 @@ console.log(`judging ${ids.length} chunk(s) (one-shot each; ${done.size} already
 let judged = 0;
 for (const id of ids) {
   const doms = [...candidates.get(id)!];
-  const prompt = `Knowledge chunk from a dental clinic KB:
-"${chunkText.get(id)}"
-
-Candidate domains:
-${doms.map((d, i) => `${i + 1}. ${d}`).join('\n')}
-
-For EACH domain: does this chunk belong to it? STRICT JSON, same order:
-{"verdicts":[{"n":1,"belongs":true|false}...]}`;
+  // OPTIMIZATION (user-designed) — "assignment is judged by gemma one-shots": one bool verdict per
+  // (chunk, candidate domain), one call per chunk. Prompt: prompts/10_domain_membership.md.
+  const prompt = prompts.domainMembership({ TEXT: String(chunkText.get(id)), DOMAINS: doms.map((d, i) => `${i + 1}. ${d}`).join('\n') });
   const raw = await gate.generate(prompt);
   const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
   let belongs: string[] = [];
