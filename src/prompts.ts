@@ -24,6 +24,7 @@ const MERGE = load('03_merge_verify.md');
 const QA = load('04_qa_leakscan.md');
 const RAG = load('05_rag_answer.md');
 const AUDIT = load('06_alias_audit.md');
+const CHAT = load('07_chat_agent.md');
 
 export const prompts = {
   anonymizeDiscover: (vars: { GROUPS: string; GROUP0: string; PEOPLE: string; MESSAGES: string }) => fill(ANON, vars),
@@ -32,4 +33,5 @@ export const prompts = {
   qaLeakScan: (vars: { MESSAGES: string }) => fill(QA, vars),
   ragAnswer: (vars: { CONTEXT: string; QUESTION: string }) => fill(RAG, vars),
   aliasAudit: (vars: { CANONICAL: string; GROUP: string; ALIASES: string }) => fill(AUDIT, vars),
+  chatAgent: (vars: { CONTEXT: string; TRANSCRIPT: string; QUESTION: string }) => fill(CHAT, vars),
 };

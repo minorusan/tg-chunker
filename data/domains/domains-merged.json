@@ -1,0 +1,596 @@
+[
+  {
+    "domain": "patient scheduling",
+    "count": 40,
+    "variants": []
+  },
+  {
+    "domain": "clinic operations",
+    "count": 36,
+    "variants": []
+  },
+  {
+    "domain": "staff management",
+    "count": 33,
+    "variants": []
+  },
+  {
+    "domain": "financial transactions",
+    "count": 32,
+    "variants": []
+  },
+  {
+    "domain": "treatment planning",
+    "count": 30,
+    "variants": []
+  },
+  {
+    "domain": "patient communication",
+    "count": 27,
+    "variants": [
+      "patient communications"
+    ]
+  },
+  {
+    "domain": "clinical procedures",
+    "count": 24,
+    "variants": []
+  },
+  {
+    "domain": "laboratory coordination",
+    "count": 18,
+    "variants": []
+  },
+  {
+    "domain": "equipment maintenance",
+    "count": 11,
+    "variants": []
+  },
+  {
+    "domain": "medical documentation",
+    "count": 10,
+    "variants": []
+  },
+  {
+    "domain": "appointment scheduling",
+    "count": 9,
+    "variants": []
+  },
+  {
+    "domain": "dental procedures",
+    "count": 9,
+    "variants": []
+  },
+  {
+    "domain": "billing and payments",
+    "count": 9,
+    "variants": []
+  },
+  {
+    "domain": "financial management",
+    "count": 8,
+    "variants": []
+  },
+  {
+    "domain": "appointment updates",
+    "count": 8,
+    "variants": []
+  },
+  {
+    "domain": "clinic maintenance",
+    "count": 7,
+    "variants": []
+  },
+  {
+    "domain": "dental laboratory coordination",
+    "count": 7,
+    "variants": []
+  },
+  {
+    "domain": "staff coordination",
+    "count": 6,
+    "variants": []
+  },
+  {
+    "domain": "patient management",
+    "count": 6,
+    "variants": []
+  },
+  {
+    "domain": "clinic logistics",
+    "count": 6,
+    "variants": []
+  },
+  {
+    "domain": "clinical documentation",
+    "count": 6,
+    "variants": []
+  },
+  {
+    "domain": "medical supplies",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "financial records",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "payment processing",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "inventory and supplies",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "dental diagnostics",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "medical records",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "dental supplies",
+    "count": 5,
+    "variants": []
+  },
+  {
+    "domain": "clinical protocols",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "inventory management",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "staff scheduling",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "payment tracking",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "treatment plans",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "diagnostic imaging",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "pricing and billing",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "pricing and payments",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "patient medical records",
+    "count": 4,
+    "variants": []
+  },
+  {
+    "domain": "patient medical history",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "clinical treatment plans",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "appointment reminders",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "equipment and supplies",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "employee management",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "patient documentation",
+    "count": 3,
+    "variants": []
+  },
+  {
+    "domain": "rental and expenses",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "clinic administration",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "appointment logistics",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "dental laboratory",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "administrative tasks",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "patient treatment plans",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "medical prescriptions",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "dental materials",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "it and software",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "clinical notes",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "logistics and delivery",
+    "count": 2,
+    "variants": [
+      "logistics and deliveries"
+    ]
+  },
+  {
+    "domain": "pricing and discounts",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "financial reporting",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "staff communication",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "medical instructions",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "laboratory orders",
+    "count": 2,
+    "variants": []
+  },
+  {
+    "domain": "administrative workflows",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient records management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "marketing and acquisition",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "payment reconciliation",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "administrative procedures",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "supply procurement",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental supplies and expenses",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "diagnostic services",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "pricing and estimates",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "billing and costs",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "appointment management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "rental agreements",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical equipment maintenance",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinic supplies management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "employee payroll and hours",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical procedures and notes",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinic operations and logistics",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinic management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "staff compensation",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "appointment confirmation",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental materials and supplies",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental treatment plans",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "staffing and recruitment",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "human resources",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient feedback",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "it and access",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient appointments",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "payment details",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "professional development",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "medical supplies and equipment",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "financial tracking",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient records",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "utility and facility management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical instructions",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "recruitment and training",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical diagnostics",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "contract management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical supplies",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental implants",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental prosthetics",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "expense tracking",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "appointment cancellations",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental equipment",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient complaints",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "medical records management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "dental materials and equipment",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "diagnostic results",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "laboratory communication",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "patient follow-up",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "laboratory instructions",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "facility maintenance",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "appointment follow-ups",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "appointment protocols",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "medical imaging",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "customer communication",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "supply management",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "utility and maintenance",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "clinical treatments",
+    "count": 1,
+    "variants": []
+  },
+  {
+    "domain": "laboratory and diagnostics",
+    "count": 1,
+    "variants": []
+  }
+]

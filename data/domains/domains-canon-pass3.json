@@ -1,0 +1,163 @@
+[
+  {
+    "domain": "patient scheduling",
+    "count": 71,
+    "merged": [
+      "appointment logistics",
+      "appointment updates"
+    ]
+  },
+  {
+    "domain": "treatment planning",
+    "count": 59,
+    "merged": []
+  },
+  {
+    "domain": "financial transactions",
+    "count": 56,
+    "merged": [
+      "payment tracking",
+      "rental and expenses"
+    ]
+  },
+  {
+    "domain": "staff management",
+    "count": 53,
+    "merged": []
+  },
+  {
+    "domain": "clinic operations",
+    "count": 46,
+    "merged": []
+  },
+  {
+    "domain": "clinical procedures",
+    "count": 46,
+    "merged": [
+      "dental procedures",
+      "dental diagnostics"
+    ]
+  },
+  {
+    "domain": "financial management",
+    "count": 44,
+    "merged": [
+      "pricing and billing"
+    ]
+  },
+  {
+    "domain": "medical documentation",
+    "count": 32,
+    "merged": []
+  },
+  {
+    "domain": "patient communication",
+    "count": 27,
+    "merged": []
+  },
+  {
+    "domain": "equipment maintenance",
+    "count": 19,
+    "merged": []
+  },
+  {
+    "domain": "laboratory coordination",
+    "count": 18,
+    "merged": []
+  },
+  {
+    "domain": "medical supplies",
+    "count": 10,
+    "merged": []
+  },
+  {
+    "domain": "dental laboratory coordination",
+    "count": 7,
+    "merged": []
+  },
+  {
+    "domain": "dental supplies and expenses",
+    "count": 5,
+    "merged": []
+  },
+  {
+    "domain": "logistics and delivery",
+    "count": 4,
+    "merged": []
+  },
+  {
+    "domain": "laboratory orders",
+    "count": 3,
+    "merged": []
+  },
+  {
+    "domain": "administrative workflows",
+    "count": 3,
+    "merged": []
+  },
+  {
+    "domain": "marketing and acquisition",
+    "count": 3,
+    "merged": []
+  },
+  {
+    "domain": "dental laboratory",
+    "count": 2,
+    "merged": []
+  },
+  {
+    "domain": "medical prescriptions",
+    "count": 2,
+    "merged": []
+  },
+  {
+    "domain": "it and software",
+    "count": 2,
+    "merged": []
+  },
+  {
+    "domain": "dental implants",
+    "count": 2,
+    "merged": []
+  },
+  {
+    "domain": "it and access",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "professional development",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "contract management",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "expense tracking",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "patient complaints",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "diagnostic results",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "laboratory communication",
+    "count": 1,
+    "merged": []
+  },
+  {
+    "domain": "patient follow-up",
+    "count": 1,
+    "merged": []
+  }
+]

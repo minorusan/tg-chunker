@@ -64,19 +64,42 @@ export class GuestGate {
     this.log('   ⛩ guest grant released — llm free');
   }
 
-  /** Chat through the gateway with our guest token (never touches Ollama directly). Returns the text. */
-  async generate(prompt: string, opts: { temperature?: number } = {}): Promise<string> {
-    await this.ensure();
-    const r = await this.op('generate', { authority: this.token, prompt, temperature: opts.temperature ?? 0 }, 300_000);
-    if (r.ok === false) { this.token = null; throw new Error(`gateway generate failed: ${r.error}`); }
+  /** Run a guarded op with SURVIVAL: the daemon restarting mid-call (a normal event on this box —
+   *  deploys happen) drops the socket AND wipes the in-memory authority stack. So on a transient
+   *  failure we void our token, back off, re-acquire the grant (ensure waits for the daemon to be
+   *  back + our turn), and retry — bounded, then fail loud. Denied/permanent errors stay fatal. */
+  private async guarded(op: string, params: Record<string, unknown>, timeoutMs: number): Promise<Record<string, any>> {
+    const BACKOFF = [5_000, 15_000, 45_000, 90_000, 180_000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.ensure();
+        const r = await this.op(op, { authority: this.token, ...params }, timeoutMs);
+        if (r.ok === false) {
+          // stale/invalid token (e.g. stack wiped by a restart) → re-acquire and retry like a transient
+          this.token = null;
+          throw new Error(`gateway ${op} rejected: ${r.error}`);
+        }
+        return r;
+      } catch (e) {
+        if (attempt >= BACKOFF.length) throw e;   // bounded — then fail loud
+        this.token = null;                        // whatever we held is suspect now
+        this.log(`   ⛩ gateway ${op} failed (${e instanceof Error ? e.message.slice(0, 80) : e}) — retry ${attempt + 1}/${BACKOFF.length} in ${BACKOFF[attempt] / 1000}s`);
+        await new Promise((r2) => setTimeout(r2, BACKOFF[attempt]));
+      }
+    }
+  }
+
+  /** Chat through the gateway with our guest token (never touches Ollama directly). Returns the text.
+   *  opts.model targets an allowlisted UTILITY model (e.g. gemma-domains, the tuned query router) —
+   *  it runs alongside the owner's model server-side, no swap. */
+  async generate(prompt: string, opts: { temperature?: number; model?: string } = {}): Promise<string> {
+    const r = await this.guarded('generate', { prompt, temperature: opts.temperature ?? 0, ...(opts.model ? { model: opts.model } : {}) }, 300_000);
     return String((r.data ?? r).text ?? '');
   }
 
   /** Embed through the gateway. nomic's asymmetric prefix is applied server-side by `task`. */
   async embed(inputs: string[], task: 'document' | 'query'): Promise<number[][]> {
-    await this.ensure();
-    const r = await this.op('embed', { authority: this.token, input: inputs, task }, 180_000);
-    if (r.ok === false) { this.token = null; throw new Error(`gateway embed failed: ${r.error}`); }
+    const r = await this.guarded('embed', { input: inputs, task }, 180_000);
     const embeddings = (r.data ?? r).embeddings as number[][] | undefined;
     if (!embeddings) throw new Error('gateway embed: no embeddings in response');
     return embeddings;

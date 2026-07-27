@@ -86,7 +86,7 @@ export async function askText(ollamaIp: string, prompt: string): Promise<string>
       messages: [{ role: 'user', content: prompt }],
       stream: false,
       think: false,
-      options: { temperature: 0.2, num_predict: 1024 },
+      options: { temperature: 0.2, num_predict: 2048 },   // verbose answers need room
     }),
     signal: AbortSignal.timeout(300_000),
   });

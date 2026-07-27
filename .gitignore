@@ -5,3 +5,20 @@ node_modules/
 # NOTE: anonymized/ and output/ are intentionally COMMITTED — the whole point is to let a reviewer
 # open the repo and see the produced results (anonymised chats + the extracted chunks) without running
 # anything. They are safe to publish precisely because every real person has been replaced by a token.
+train/out/
+data/mine-domains.log
+data/canon*.log
+data/prompt-sweep*.log
+data/assign-canon.log
+data/domains/bulks.jsonl
+data/domains/canon-log*
+data/domains/*-input.json
+data/domains/p2-*.json
+data/domains/p3-*.json
+data/domains/domains-canon-v*
+data/train/train.jsonl
+data/train/val.jsonl
+data/train/test-extra.jsonl
+data/train/gen*.jsonl
+data/domains/propositions.txt
+data/domains/domains-canon-pass1*

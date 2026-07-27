@@ -1,0 +1,73 @@
+{
+  "clinic_admin_chat_000": [
+    "financial transactions",
+    "marketing and acquisition"
+  ],
+  "clinic_admin_chat_001": [
+    "financial transactions",
+    "financial management"
+  ],
+  "clinic_admin_chat_002": [
+    "financial transactions",
+    "clinic operations",
+    "patient complaints"
+  ],
+  "clinic_admin_chat_003": [
+    "financial management",
+    "dental supplies and expenses",
+    "dental implants"
+  ],
+  "clinic_admin_chat_004": [
+    "treatment planning",
+    "dental implants"
+  ],
+  "clinic_admin_chat_005": [
+    "staff management",
+    "administrative workflows"
+  ],
+  "clinic_reception_chat_000": [
+    "patient scheduling",
+    "patient communication",
+    "patient follow-up"
+  ],
+  "clinic_reception_chat_001": [
+    "financial transactions",
+    "patient communication",
+    "administrative workflows"
+  ],
+  "clinic_reception_chat_002": [
+    "treatment planning",
+    "financial transactions",
+    "medical documentation"
+  ],
+  "clinic_scripts_chat_000": [
+    "financial transactions",
+    "patient communication"
+  ],
+  "clinic_scripts_chat_001": [
+    "patient communication",
+    "administrative workflows"
+  ],
+  "clinic_scripts_chat_002": [
+    "patient scheduling",
+    "marketing and acquisition"
+  ],
+  "person_employee1": [
+    "people directory"
+  ],
+  "person_employee2": [
+    "people directory"
+  ],
+  "person_employee3": [
+    "people directory"
+  ],
+  "person_patient1": [
+    "people directory"
+  ],
+  "person_patient2": [
+    "people directory"
+  ],
+  "person_patient3": [
+    "people directory"
+  ]
+}
