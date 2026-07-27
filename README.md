@@ -391,3 +391,25 @@ Full run of 8 queries with per-query relevance comments and a conclusion:
 | top-k semantic search | **brute-force cosine** (exact, no ANN needed at this scale) | `cosine`/`topK` in [`src/embed.ts`](./src/embed.ts) |
 | results carry provenance | **metadata in every hit** (chunk_id, score, source_file, document_id, type) | `retrieve()` in [`scripts/retrieve.ts`](./scripts/retrieve.ts) |
 | people found by name, sense by meaning | **index both chunk types** | `textOf` in [`scripts/build-index.ts`](./scripts/build-index.ts) |
+
+
+---
+
+# Homework #3 — Improved retrieval (metadata filtering + hybrid search)
+
+Pipeline v2, end to end: **query → domain extraction (fine-tuned Gemma-3-270M) → deterministic
+metadata filter → hybrid BM25⊕cosine (RRF) → top-k → gemma verbose answer**. Baseline vs improved:
+[`outputs/retrieval_comparison.md`](./outputs/retrieval_comparison.md).
+
+| step | file | what |
+|---|---|---|
+| domain taxonomy | `scripts/mine-domains.ts` → `merge-domains-deterministic.ts` → `merge-domains-vector.ts` → `canon-domains.ts` | emergent domains mined from 9,938 propositions, canonicalised by a shrinking synonym loop (vector proposes 10, gemma disposes; 118→30) |
+| chunk→domain assignment | `scripts/assign-clinic-canon.ts` (+ big-corpus `assign-domains-mine/judge.ts`) | every chunk gets domain metadata (sidecar `data/processed/chunk-domains.json`), gemma one-shot judged |
+| **query→domain extractor** | `train/train_domains.py` (+ `eval_domains.py`) | Gemma-3-270M **full fine-tune** per Google's official 270M recipe on 5k synthetic pairs (4 agent-generated voices + typo torture); **81% exact / 84% usable** on 736 held-out queries; GGUF → served by Ollama as `gemma-domains` |
+| metadata filtering (rubric #1) | `scripts/retrieval_improved.ts` | filter value EXTRACTED from the query; over-narrow filter falls back VISIBLY |
+| hybrid search (rubric #2) | `scripts/retrieval_improved.ts` | BM25 + cosine fused by Reciprocal Rank Fusion — fixes HW2's 0.001-margin ranking flips |
+| chat agent demo | `scripts/serve.ts` (:3434) | split-screen desktop chat (retention-driven clinic persona) + live pipeline X-ray |
+
+Headline results (same 8 HW2 queries): both documented HW2 failures fixed — the phone-policy query's
+wrong top-1 corrected by hybrid ranks, and person queries now route via `people directory` to entity
+cards; 6–8/18 chunks searched instead of 18 (the O(1) navmesh pruning). Full analysis in the comparison doc.

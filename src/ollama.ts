@@ -1,13 +1,15 @@
-// Direct Ollama client — we talk to the local model straight over HTTP, no framework in between.
-// For the homework we shut Maradel down and point this at raw Ollama (`--ollamaIp`), so the whole
-// pipeline is provably "in-house LLM, no cloud, no internet" — which is the entire point of the bet.
+// LLM client — two paths to the same local model, no framework in between:
+//  - GATEWAY (LLM_GATEWAY set): calls go through the shared-GPU resource gateway as the lowest-priority
+//    guest (src/guest.ts) — polite multi-tenancy on a busy machine.
+//  - STANDALONE (LLM_GATEWAY unset): straight to a local Ollama (`--ollamaIp`).
+// Either way the whole pipeline is provably "in-house LLM, no cloud, no internet" — the point of the bet.
 
 import { labGate } from './guest.ts';
 
 const MODEL = 'gemma4:26b';
 
 // Optional guest gate (see src/guest.ts): when set, EVERY LLM call first waits for a guest grant on
-// maradel's llm resource — tg-chunker only speaks when nobody with real priority holds the GPU.
+// the shared-GPU gateway — this tool only speaks when nobody with real priority holds the GPU.
 let llmGate: (() => Promise<void>) | null = null;
 export function setLlmGate(gate: () => Promise<void>): void { llmGate = gate; }
 
@@ -21,7 +23,7 @@ export function setLlmGate(gate: () => Promise<void>): void { llmGate = gate; }
  * The `schema` arg is accepted but unused (kept so call sites can document their intended shape).
  */
 export async function askJson<T>(ollamaIp: string, prompt: string, _schema?: object): Promise<T> {
-  // In the lab, LLM_GATEWAY is set → go through Maradel's gateway as guest (the one door). The gate
+  // When LLM_GATEWAY is set → go through the resource gateway as guest (the one door). The gate
   // handles acquire/wait/release, so the legacy llmGate is redundant on this path.
   const gate = labGate();
   if (gate) return parseLoose<T>(await gate.generate(prompt, { temperature: 0 }));
@@ -86,7 +88,7 @@ export async function askText(ollamaIp: string, prompt: string): Promise<string>
       messages: [{ role: 'user', content: prompt }],
       stream: false,
       think: false,
-      options: { temperature: 0.2, num_predict: 1024 },
+      options: { temperature: 0.2, num_predict: 2048 },   // verbose answers need room
     }),
     signal: AbortSignal.timeout(300_000),
   });

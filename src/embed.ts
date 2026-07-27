@@ -11,7 +11,7 @@ import { labGate } from './guest.ts';
 
 const EMBED_MODEL = 'nomic-embed-text';
 
-// Legacy raw path: pre-prefix ourselves (standalone / Maradel down). On the gateway path the server
+// Raw path: pre-prefix ourselves (standalone mode). On the gateway path the server
 // applies nomic's asymmetric prefix by `task`, so we must NOT prefix again (would double it).
 async function embedRaw(ollamaIp: string, inputs: string[]): Promise<number[][]> {
   const res = await fetch(`http://${ollamaIp}/api/embed`, {

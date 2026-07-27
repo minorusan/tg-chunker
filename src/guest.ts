@@ -1,16 +1,17 @@
-// GUEST GATE — tg-chunker as a polite citizen of the shared-GPU world (the "one door" discipline).
+// GUEST GATE — this tool as a polite citizen of a SHARED GPU (the "one door" discipline).
 //
-// The NUC's LLM is arbitrated by maradel's llm resource (POST /resource/llm on the daemon): authorities
-// maradel/ayin/podcast own the model; `guest` is the FOURTH, lowest authority — it uses gemma (shares
-// maradel's model, so a guest grant swaps nothing) and only ever gets root when the stack is EMPTY.
+// The host machine runs one LLM server shared by several applications, arbitrated by a resource
+// gateway (POST /resource/llm): named authorities own the model; `guest` is the LOWEST authority —
+// it uses the default chat model (shares it, so a guest grant swaps nothing) and only ever gets a
+// grant when nobody else holds the resource.
 //
 // INTENTION: LEAST PRIORITY, ALWAYS YIELDS. Before every LLM call the pipeline calls ensure():
 //   - we hold a fresh grant → proceed (refreshed every few minutes to slide the TTL);
-//   - resource busy (maradel is chatting, ayin is coding, podcast is rendering) → WAIT, polling until
-//     free. The checkpointed pipeline makes waiting free — it just pauses between windows.
+//   - resource busy (a higher-priority app is using the GPU) → WAIT, polling until free. The
+//     checkpointed pipeline makes waiting free — it just pauses between windows.
 //   - we get preempted mid-run → the next ensure() sees `busy` and waits again. Nothing is lost.
-// Fail-loud: if the authority daemon is unreachable while --llmAuthority was requested, we crash —
-// running ungated when gating was asked for would be a silent race with someone's live work.
+// Fail-loud: if the gateway is unreachable while gating was requested, we crash — running ungated
+// when gating was asked for would be a silent race with someone's live work.
 
 const REFRESH_MS = 4 * 60 * 1000;   // re-enqueue cadence (grant TTL below is 10 min)
 const GRANT_TTL_MS = 10 * 60 * 1000; // short grant → a killed run frees the resource quickly
@@ -64,29 +65,52 @@ export class GuestGate {
     this.log('   ⛩ guest grant released — llm free');
   }
 
-  /** Chat through the gateway with our guest token (never touches Ollama directly). Returns the text. */
-  async generate(prompt: string, opts: { temperature?: number } = {}): Promise<string> {
-    await this.ensure();
-    const r = await this.op('generate', { authority: this.token, prompt, temperature: opts.temperature ?? 0 }, 300_000);
-    if (r.ok === false) { this.token = null; throw new Error(`gateway generate failed: ${r.error}`); }
+  /** Run a guarded op with SURVIVAL: the daemon restarting mid-call (a normal event on this box —
+   *  deploys happen) drops the socket AND wipes the in-memory authority stack. So on a transient
+   *  failure we void our token, back off, re-acquire the grant (ensure waits for the daemon to be
+   *  back + our turn), and retry — bounded, then fail loud. Denied/permanent errors stay fatal. */
+  private async guarded(op: string, params: Record<string, unknown>, timeoutMs: number): Promise<Record<string, any>> {
+    const BACKOFF = [5_000, 15_000, 45_000, 90_000, 180_000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.ensure();
+        const r = await this.op(op, { authority: this.token, ...params }, timeoutMs);
+        if (r.ok === false) {
+          // stale/invalid token (e.g. stack wiped by a restart) → re-acquire and retry like a transient
+          this.token = null;
+          throw new Error(`gateway ${op} rejected: ${r.error}`);
+        }
+        return r;
+      } catch (e) {
+        if (attempt >= BACKOFF.length) throw e;   // bounded — then fail loud
+        this.token = null;                        // whatever we held is suspect now
+        this.log(`   ⛩ gateway ${op} failed (${e instanceof Error ? e.message.slice(0, 80) : e}) — retry ${attempt + 1}/${BACKOFF.length} in ${BACKOFF[attempt] / 1000}s`);
+        await new Promise((r2) => setTimeout(r2, BACKOFF[attempt]));
+      }
+    }
+  }
+
+  /** Chat through the gateway with our guest token (never touches Ollama directly). Returns the text.
+   *  opts.model targets an allowlisted UTILITY model (e.g. gemma-domains, the tuned query router) —
+   *  it runs alongside the owner's model server-side, no swap. */
+  async generate(prompt: string, opts: { temperature?: number; model?: string } = {}): Promise<string> {
+    const r = await this.guarded('generate', { prompt, temperature: opts.temperature ?? 0, ...(opts.model ? { model: opts.model } : {}) }, 300_000);
     return String((r.data ?? r).text ?? '');
   }
 
   /** Embed through the gateway. nomic's asymmetric prefix is applied server-side by `task`. */
   async embed(inputs: string[], task: 'document' | 'query'): Promise<number[][]> {
-    await this.ensure();
-    const r = await this.op('embed', { authority: this.token, input: inputs, task }, 180_000);
-    if (r.ok === false) { this.token = null; throw new Error(`gateway embed failed: ${r.error}`); }
+    const r = await this.guarded('embed', { input: inputs, task }, 180_000);
     const embeddings = (r.data ?? r).embeddings as number[][] | undefined;
     if (!embeddings) throw new Error('gateway embed: no embeddings in response');
     return embeddings;
   }
 }
 
-// ── Lab gateway singleton ────────────────────────────────────────────────────
-// When LLM_GATEWAY is set (the nuk-lab container always sets it), every LLM call goes through the
-// Maradel gateway as `guest` — the one door. When it's UNSET (legacy standalone: Maradel down, raw
-// Ollama via --ollamaIp), this returns null and the caller falls back to the direct path.
+// ── Gateway singleton ────────────────────────────────────────────────────────
+// When the LLM_GATEWAY env var is set, every LLM call goes through the resource gateway as `guest` —
+// the one door to the shared GPU. When it's UNSET (standalone: raw Ollama via --ollamaIp), this
+// returns null and callers fall back to the direct path.
 let shared: GuestGate | null = null;
 let resolved = false;
 export function labGate(): GuestGate | null {
