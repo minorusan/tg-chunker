@@ -9,13 +9,14 @@
 > splitters cannot understand a conversation; and the moment the data is private (medical, legal, a
 > client's business, an HR investigation), option (1) is off the table. That is the entire reason this exists.
 
-Homework #1 for the RAG course: prepare a knowledge base. Instead of a toy dataset, this is a **real,
-generalist ingestion pipeline** — feed it *any* Telegram chat export and it produces a privacy-safe,
-RAG-ready knowledge base, using nothing but a **local model (Ollama + gemma)**. No cloud, no internet.
+RAG course homeworks. **HW1** (this pipeline) prepares the knowledge base; **HW2** ([jump ↓](#homework-2--semantic-retrieval))
+adds the semantic retrieval layer on top of it. Instead of a toy dataset, HW1 is a **real, generalist
+ingestion pipeline** — feed it *any* Telegram chat export and it produces a privacy-safe, RAG-ready
+knowledge base, using nothing but a **local model (Ollama + gemma)**. No cloud, no internet.
 
 **It is domain-agnostic.** Nothing about the tool is tied to any subject. Who counts as "who" is a
 runtime parameter (`--groupingTags`); the metadata domain is a parameter (`--domain`). The example
-shipped in [`sample_input/`](./sample_input) happens to be a **dental clinic's admin chat**, but that
+shipped in [`data/raw/`](./data/raw) happens to be a **dental clinic's admin chat**, but that
 is just the worked example for grading — point it at a support team, a landlord group, a game guild,
 anything.
 
@@ -69,7 +70,7 @@ overlap**, smarter than a blind fixed-character overlap.
 raw chats ──▶ Pass 1: anonymise ──▶ anonymized/*.json + names-map.json (audit)
                                          │
                                          ▼
-                              Pass 2: extract propositions ──▶ output/chunks.jsonl + chunks.md
+                              Pass 2: extract propositions ──▶ data/processed/chunks.jsonl + chunks.md
 ```
 
 Two design decisions that keep it robust:
@@ -89,18 +90,18 @@ Requires **Node ≥ 22.6** (runs TypeScript directly — no build) and a local *
 `gemma4:26b`.
 
 ```bash
-node src/index.ts --sourceDir ./sample_input --ollamaIp 127.0.0.1:11434 \
+node src/index.ts --sourceDir ./data/raw --ollamaIp 127.0.0.1:11434 \
                   --groupingTags employee,patient --domain clinic_admin --window 12
 # or just: npm start
 ```
 
-Outputs land in [`anonymized/`](./anonymized) and [`output/`](./output) — **both are committed**, so
+Outputs land in [`data/anonymized/`](./data/anonymized) and [`data/processed/`](./data/processed) — **both are committed**, so
 you can inspect the results in this repo without running anything (they are safe to publish precisely
 because every real person is now a token).
 
 ---
 
-## Sources ([`sample_input/`](./sample_input)) — the worked example
+## Sources ([`data/raw/`](./data/raw)) — the worked example
 
 Three fabricated Telegram exports (real format, invented content — nothing here is anyone's real data):
 
@@ -117,7 +118,7 @@ meaningful, and it proves a person gets the **same token across different chats*
 
 ## Chunk metadata
 
-Each line of `output/chunks.jsonl` is one chunk:
+Each line of `data/processed/chunks.jsonl` is one chunk:
 
 | field | meaning |
 |---|---|
@@ -149,7 +150,7 @@ semantic work. Deterministic-where-possible, semantic-where-needed.
 
 ## Example chunks
 
-Real output from `sample_input/` (see [`output/chunks.jsonl`](./output/chunks.jsonl) and the readable [`output/chunks.md`](./output/chunks.md)).
+Real output from `data/raw/` (see [`data/processed/chunks.jsonl`](./data/processed/chunks.jsonl) and the readable [`data/processed/chunks.md`](./data/processed/chunks.md)).
 
 A **proposition** (a rule, self-contained):
 ```json
@@ -157,7 +158,7 @@ A **proposition** (a rule, self-contained):
   "chunk_type": "proposition",
   "chunk_id": "clinic_admin_chat_001",
   "document_id": "clinic_admin_chat",
-  "source_file": "sample_input/clinic_admin_chat.json",
+  "source_file": "data/raw/clinic_admin_chat.json",
   "chunk_index": 1,
   "text": "Оновлене правило по гігієні: поточна вартість становить 2300 грн, а 1800 грн коштує лише тоді, коли пацієнт на брекетах і процедура проводилася лише з використанням порошка (уточнюйте у лікаря).",
   "title": "Адмінка Клініки",
@@ -186,7 +187,7 @@ A **proposition tied to a person** (note `actors` + `timeframe`):
   "chunk_type": "proposition",
   "chunk_id": "clinic_admin_chat_002",
   "document_id": "clinic_admin_chat",
-  "source_file": "sample_input/clinic_admin_chat.json",
+  "source_file": "data/raw/clinic_admin_chat.json",
   "chunk_index": 2,
   "text": "У випадку з patient1, якщо онлайн-консультація затягується понад 30 хвилин (наприклад, тривала годину), проводиться списання 1000 грн; при цьому такі тривалі онлайн-консультації для patient1 більше не беруться.",
   "title": "Адмінка Клініки",
@@ -218,7 +219,7 @@ The **same person in a different chat** — same token, different `source_file`:
   "chunk_type": "proposition",
   "chunk_id": "clinic_reception_chat_001",
   "document_id": "clinic_reception_chat",
-  "source_file": "sample_input/clinic_reception_chat.json",
+  "source_file": "data/raw/clinic_reception_chat.json",
   "chunk_index": 1,
   "text": "patient1 досі не оплатила акт за 03.06, employee3 має передзвонити їй ще раз сьогодні.",
   "title": "Ресепшн",
@@ -328,3 +329,65 @@ Each design idea and where it lives in the code. Every intention is pinned in th
   lets the LLM adjudicate. A stronger embedder might revive the vector approach for nickname↔formal cases.
 - **Local trade-off:** a local 26B model is weaker than a frontier API at this — but it is the *only*
   option when the data cannot leave the building. That trade is the entire point.
+
+---
+
+# Homework #2 — semantic retrieval
+
+HW1 gave us the chunks. HW2 makes them **searchable by meaning**: embed every chunk, store the vectors,
+and answer a natural-language question by returning the top-k closest chunks. Same principle as HW1 —
+**everything runs on the local box**, no cloud.
+
+## The pieces
+
+| step | file | what it does |
+|---|---|---|
+| embeddings core | [`src/embed.ts`](./src/embed.ts) | `embedDocuments` / `embedQuery` (local `nomic-embed-text`), `cosine`, brute-force `topK` |
+| build the index | [`scripts/build-index.ts`](./scripts/build-index.ts) | embeds every chunk in `data/processed/chunks.jsonl` → saves `index/index.json` |
+| search | [`scripts/retrieve.ts`](./scripts/retrieve.ts) | embeds a query, cosine-scores it against all vectors, prints top-k with metadata |
+| web UI daemon | [`scripts/serve.ts`](./scripts/serve.ts) | zero-dependency `node:http` server on :3434 — search bar + button + top-k results |
+| the examples | [`scripts/run-examples.ts`](./scripts/run-examples.ts) | runs 8 test queries → [`outputs/retrieval_examples.md`](./outputs/retrieval_examples.md) |
+
+```bash
+npm run bake                                         # → index/index.json (18 vectors, dim 768)
+npm run retrieve -- "скільки коштує гігієна на брекетах?"   # → top-3 with score + source
+npm run serve                                        # → search UI at http://localhost:3434
+npm run examples                                     # → outputs/retrieval_examples.md
+```
+
+## Choices, and why
+
+- **Embedding model: `nomic-embed-text` (local).** A retrieval-native model — exactly the job here
+  (topic-similarity), and the same model embeds both chunks and queries. It is **asymmetric**: chunks
+  get a `search_document:` prefix, queries a `search_query:` prefix, so a short question lands near the
+  long passage that answers it. (Aside: we first tried this embedder to *merge names* in HW1 and it
+  failed — it can't tell "Саша" from "Александр". That was the wrong job for it; **this** is the right one.)
+- **Vector store: a plain saved matrix (`index/index.json`), searched by brute-force cosine.** The rubric
+  allows a "NumPy matrix" as an alternative to FAISS; this is that, in Node. For 18 chunks (or a few
+  thousand) exact brute-force is **instant** and has zero approximation error — FAISS's ANN index would
+  be pure overhead at this scale. The trade would flip in the millions; then swap in FAISS/HNSW.
+- **We index both chunk types.** Proposition chunks are embedded on their text; person chunks on their
+  text + aliases. This is HW1's two-index idea carried through — sense matched by meaning, people by name.
+
+## Results & analysis
+
+Full run of 8 queries with per-query relevance comments and a conclusion:
+**[`outputs/retrieval_examples.md`](./outputs/retrieval_examples.md)**. In short:
+
+- **Works well** on distinctive factual questions (implant-price-on-phone → 0.822, exact hit) and on
+  "tell me about *person X*" (surfaces her facts from **two different chats** — the anonymization payoff).
+- **Weak spots, honestly:** nomic leans partly lexical, so keyword-overlap chunks ("вартість"/"грн")
+  intrude; scores cluster in a tight 0.72–0.83 band, so ranking is fragile (one query put the right
+  chunk at #2, beaten by **0.001**); very short chunks embed weakly. **Next step:** a hybrid
+  lexical+vector retriever with rank fusion + a cross-encoder reranker over the top-k.
+
+## HW2 idea → code map
+
+| idea (the *why*) | technique | code (the *what*) |
+|---|---|---|
+| search by meaning, offline | **local embeddings** | `embedDocuments`/`embedQuery` in [`src/embed.ts`](./src/embed.ts) |
+| question ↔ passage matching | **asymmetric prefixes** (`search_query:` / `search_document:`) | [`src/embed.ts`](./src/embed.ts) |
+| store vectors | **saved matrix** (rubric's NumPy-matrix option) | [`scripts/build-index.ts`](./scripts/build-index.ts) → `index/index.json` |
+| top-k semantic search | **brute-force cosine** (exact, no ANN needed at this scale) | `cosine`/`topK` in [`src/embed.ts`](./src/embed.ts) |
+| results carry provenance | **metadata in every hit** (chunk_id, score, source_file, document_id, type) | `retrieve()` in [`scripts/retrieve.ts`](./scripts/retrieve.ts) |
+| people found by name, sense by meaning | **index both chunk types** | `textOf` in [`scripts/build-index.ts`](./scripts/build-index.ts) |

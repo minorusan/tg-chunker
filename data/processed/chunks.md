@@ -5,7 +5,7 @@
 ## Proposition chunks — the knowledge
 
 ### Адмінка Клініки  
-`document_id: clinic_admin_chat` · `sample_input/clinic_admin_chat.json`
+`document_id: clinic_admin_chat` · `data/raw/clinic_admin_chat.json`
 
 **`clinic_admin_chat_000`** — Старе правило: пенсіонерам знижка 5% на гігієну (поки діє).
 <sub>actors: employee1 · timeframe: 2019-05-01T10:00:00 · msgs: 1</sub>
@@ -26,7 +26,7 @@
 <sub>actors: employee1 · timeframe: 2024-02-12T11:00:00, 2024-02-12T11:01:00, 2024-02-12T11:02:00 · msgs: 16, 17, 18</sub>
 
 ### Ресепшн  
-`document_id: clinic_reception_chat` · `sample_input/clinic_reception_chat.json`
+`document_id: clinic_reception_chat` · `data/raw/clinic_reception_chat.json`
 
 **`clinic_reception_chat_000`** — patient3 записана на 24 вересня, потрібно нагадати їй про гігієну.
 <sub>actors: patient3, employee3 · timeframe: 2024-06-01T08:30:00 · msgs: 2</sub>
@@ -38,7 +38,7 @@
 <sub>actors: patient3, employee2, employee1, employee3 · timeframe: 2024-06-02T09:00:00, 2024-06-02T09:01:00, 2024-06-02T09:10:00 · msgs: 6, 7, 8</sub>
 
 ### Скрипти для адмінів  
-`document_id: clinic_scripts_chat` · `sample_input/clinic_scripts_chat.json`
+`document_id: clinic_scripts_chat` · `data/raw/clinic_scripts_chat.json`
 
 **`clinic_scripts_chat_000`** — Скрипт відповіді на питання про ціну гігієни: якщо пацієнт питає 'скільки коштує чистка?', відповідь має бути: 'Поточна гігієна 2300 грн, а на брекетах порошком — 1800 грн.'
 <sub>actors: employee1 · timeframe: 2024-03-01T10:00:00, 2024-03-01T10:01:00, 2024-03-01T10:02:00 · msgs: 1, 2, 3</sub>

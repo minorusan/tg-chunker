@@ -47,10 +47,13 @@ const CHUNK_SCHEMA = {
 export async function chunkChat(
   ollamaIp: string, documentId: string, sourceFile: string, title: string, domain: string,
   messages: TgMessage[], windowN: number, log: (s: string) => void,
+  resume?: { start: number; chunkIndex: number; chunks: Chunk[] },
+  onWindow?: (nextStart: number, chunkIndex: number, chunks: Chunk[]) => void,
 ): Promise<Chunk[]> {
-  const chunks: Chunk[] = [];
-  let chunkIndex = 0;
-  let start = 0;
+  // RESUMABLE: continue from a saved window with the chunks already produced for THIS file.
+  const chunks: Chunk[] = resume?.chunks ?? [];
+  let chunkIndex = resume?.chunkIndex ?? 0;
+  let start = resume?.start ?? 0;
 
   while (start < messages.length) {
     const window = messages.slice(start, start + windowN);
@@ -59,7 +62,7 @@ export async function chunkChat(
       .filter((m) => m.text.trim() !== ''); // skip media-only / empty messages
 
     // A window of only empty/media messages → nothing to extract, just advance.
-    if (msgs.length === 0) { start += windowN; continue; }
+    if (msgs.length === 0) { start += windowN; onWindow?.(start, chunkIndex, chunks); continue; }
 
     log(`   window msgs ${start + 1}–${end + 1}/${messages.length}`);
     let res: Record<string, unknown>;
@@ -67,7 +70,7 @@ export async function chunkChat(
       res = await askJson(ollamaIp, prompts.chunkPropositions({
         WINDOW_START: String(start + 1), WINDOW_END: String(end + 1), MESSAGES: JSON.stringify(msgs, null, 0),
       }), CHUNK_SCHEMA);
-    } catch { start += windowN; continue; }
+    } catch { start += windowN; onWindow?.(start, chunkIndex, chunks); continue; }
 
     // Tolerant parsing: gemma may name the array `blobs` or `propositions`, and a proposition's text
     // `thought`/`text`, its ids `messageIds`/`message_ids`. Accept them all so we never silently drop work.
@@ -102,6 +105,7 @@ export async function chunkChat(
     const step = Math.max(1, windowN + offset);
     if (offset < 0) log(`     ↩ abruption: re-reading last ${-offset} message(s) in the next window`);
     start += step;
+    onWindow?.(start, chunkIndex, chunks);   // checkpoint: next window + chunks produced so far
   }
   return chunks;
 }
